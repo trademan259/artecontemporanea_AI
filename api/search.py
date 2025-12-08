@@ -60,16 +60,21 @@ L'utente cerca: "{query}"
 Risultati dal catalogo:
 {books_context}
 
-ISTRUZIONI DI FORMATTAZIONE:
-- Scrivi in paragrafi brevi separati da righe vuote
-- NON usare markdown (no asterischi, no ##, no -)
-- NON fare elenchi puntati
-- Usa frasi complete e scorrevoli
-- Sii conciso: max 3-4 paragrafi
-- Cita i titoli tra virgolette
+FORMATO RISPOSTA OBBLIGATORIO:
+Scrivi esattamente 3-4 paragrafi SEPARATI DA UNA RIGA VUOTA.
+Ogni paragrafo deve essere di 2-3 frasi.
+NON scrivere tutto attaccato.
 
-Tono: professionale e sobrio, da archivio. No enfasi commerciale, no punti esclamativi.
-Rispondi nella stessa lingua usata dall'utente."""
+Esempio di formato corretto:
+"Prima frase del primo paragrafo. Seconda frase.
+
+Primo paragrafo del secondo blocco. Altra frase qui.
+
+Terzo paragrafo con conclusione."
+
+Tono: professionale, sobrio, da biblioteca di ricerca.
+Cita i titoli tra virgolette.
+Rispondi nella lingua dell'utente."""
         }]
     )
     
