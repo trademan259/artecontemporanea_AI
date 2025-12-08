@@ -60,11 +60,16 @@ L'utente cerca: "{query}"
 Risultati dal catalogo:
 {books_context}
 
-Rispondi con tono professionale e sobrio, da archivio o biblioteca di ricerca.
-Presenta i risultati in modo conciso e informativo, senza enfasi commerciale.
-Evidenzia pertinenza bibliografica, rarità o rilevanza storica se presenti.
-Non fare domande, non usare punti esclamativi, evita formule di vendita.
-Rispondi nella stessa lingua usata dall'utente nella query."""
+ISTRUZIONI DI FORMATTAZIONE:
+- Scrivi in paragrafi brevi separati da righe vuote
+- NON usare markdown (no asterischi, no ##, no -)
+- NON fare elenchi puntati
+- Usa frasi complete e scorrevoli
+- Sii conciso: max 3-4 paragrafi
+- Cita i titoli tra virgolette
+
+Tono: professionale e sobrio, da archivio. No enfasi commerciale, no punti esclamativi.
+Rispondi nella stessa lingua usata dall'utente."""
         }]
     )
     
