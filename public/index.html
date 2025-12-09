@@ -22,8 +22,6 @@
             --ibm-gray-20: #262626;
             --ibm-gray-10: #161616;
             --ibm-warm: #f7f3f2;
-            --ibm-orange: #ff832b;
-            --ibm-red: #da1e28;
             --terminal-green: #42be65;
         }
 
@@ -39,6 +37,8 @@
             color: var(--ibm-gray-10);
             min-height: 100vh;
             line-height: 1.5;
+            display: flex;
+            flex-direction: column;
         }
 
         /* Top stripe */
@@ -54,16 +54,16 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 900px;
             margin: 0 auto;
-            padding: 0 2rem;
+            padding: 0 1.5rem;
+            width: 100%;
         }
 
         /* Header */
         header {
             background: var(--ibm-gray-10);
-            padding: 2rem 0;
-            margin-bottom: 2rem;
+            padding: 1.5rem 0;
         }
 
         .header-content {
@@ -75,144 +75,350 @@
         .logo-section {
             display: flex;
             align-items: center;
-            gap: 1.5rem;
+            gap: 1rem;
         }
 
         .logo-stripes {
             display: flex;
             flex-direction: column;
-            gap: 3px;
+            gap: 2px;
         }
 
         .logo-stripes span {
             display: block;
-            width: 40px;
-            height: 4px;
+            width: 30px;
+            height: 3px;
             background: var(--ibm-blue);
         }
 
         h1 {
             font-family: 'IBM Plex Mono', monospace;
-            font-size: 1.5rem;
+            font-size: 1.25rem;
             font-weight: 600;
             color: var(--ibm-gray-100);
-            letter-spacing: 0.2em;
+            letter-spacing: 0.15em;
             text-transform: uppercase;
         }
 
         .system-info {
             font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             color: var(--ibm-gray-60);
             text-align: right;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
         }
 
         .system-info .status {
             color: var(--terminal-green);
         }
 
-        /* Search Section */
-        .search-section {
+        /* Main chat area */
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 1rem 0;
+        }
+
+        /* Chat container */
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding-bottom: 1rem;
+        }
+
+        /* Messages */
+        .message {
+            margin-bottom: 1rem;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message-user {
+            display: flex;
+            justify-content: flex-end;
+        }
+
+        .message-user .message-content {
+            background: var(--ibm-blue);
+            color: white;
+            padding: 0.75rem 1rem;
+            border-radius: 12px 12px 0 12px;
+            max-width: 70%;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.9rem;
+        }
+
+        .message-bot {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .message-bot .message-content {
             background: white;
             border: 1px solid var(--ibm-gray-80);
-            padding: 2rem;
-            margin-bottom: 1.5rem;
+            padding: 1rem 1.25rem;
+            border-radius: 12px 12px 12px 0;
+            max-width: 85%;
+            font-size: 0.95rem;
+            line-height: 1.7;
         }
 
-        .search-label {
+        .message-bot .message-content a {
+            color: var(--ibm-blue);
+            text-decoration: none;
+            border-bottom: 1px solid var(--ibm-blue-light);
+        }
+
+        .message-bot .message-content a:hover {
+            color: var(--ibm-blue-dark);
+        }
+
+        /* Results preview in message */
+        .results-preview {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--ibm-gray-90);
+        }
+
+        .results-preview-title {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--ibm-gray-60);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.5rem;
+        }
+
+        .results-mini-grid {
+            display: flex;
+            gap: 0.5rem;
+            overflow-x: auto;
+            padding-bottom: 0.5rem;
+        }
+
+        .result-mini-card {
+            flex-shrink: 0;
+            width: 100px;
+            background: var(--ibm-gray-100);
+            border: 1px solid var(--ibm-gray-90);
+            border-radius: 4px;
+            overflow: hidden;
+            text-decoration: none;
+            color: inherit;
+            transition: border-color 0.15s;
+        }
+
+        .result-mini-card:hover {
+            border-color: var(--ibm-blue);
+        }
+
+        .result-mini-img {
+            width: 100%;
+            height: 80px;
+            object-fit: cover;
+            background: var(--ibm-gray-90);
+        }
+
+        .result-mini-title {
+            padding: 0.4rem;
+            font-size: 0.65rem;
+            line-height: 1.3;
+            color: var(--ibm-gray-30);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+        }
+
+        .show-all-btn {
+            display: inline-block;
+            margin-top: 0.75rem;
             font-family: 'IBM Plex Mono', monospace;
             font-size: 0.75rem;
-            font-weight: 500;
-            color: var(--ibm-gray-30);
-            text-transform: uppercase;
-            letter-spacing: 0.15em;
-            margin-bottom: 0.75rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+            color: var(--ibm-blue);
+            background: none;
+            border: 1px solid var(--ibm-blue);
+            padding: 0.4rem 0.75rem;
+            cursor: pointer;
+            transition: all 0.15s;
         }
 
-        .search-label::before {
-            content: '>';
+        .show-all-btn:hover {
+            background: var(--ibm-blue);
+            color: white;
+        }
+
+        /* Full results modal */
+        .results-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 2rem;
+        }
+
+        .results-modal.visible {
+            display: block;
+        }
+
+        .results-modal-content {
+            background: var(--ibm-gray-100);
+            max-width: 1000px;
+            margin: 0 auto;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .results-modal-header {
+            background: var(--ibm-gray-10);
+            color: white;
+            padding: 1rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .results-modal-title {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        .results-modal-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .results-modal-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            padding: 1.5rem;
+        }
+
+        .result-card {
+            background: white;
+            border: 1px solid var(--ibm-gray-80);
+            overflow: hidden;
+        }
+
+        .result-card-img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+            background: var(--ibm-gray-90);
+        }
+
+        .result-card-body {
+            padding: 0.75rem;
+        }
+
+        .result-card-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            line-height: 1.3;
+        }
+
+        .result-card-title a {
+            color: var(--ibm-gray-10);
+            text-decoration: none;
+        }
+
+        .result-card-title a:hover {
             color: var(--ibm-blue);
         }
 
-        .search-box {
-            display: flex;
-            gap: 0;
+        .result-card-meta {
+            font-size: 0.7rem;
+            color: var(--ibm-gray-60);
         }
 
-        .search-input {
+        /* Input area */
+        .input-area {
+            background: white;
+            border-top: 1px solid var(--ibm-gray-80);
+            padding: 1rem;
+        }
+
+        .input-box {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .chat-input {
             flex: 1;
-            padding: 1rem 1.25rem;
+            padding: 0.875rem 1rem;
             font-family: 'IBM Plex Mono', monospace;
-            font-size: 1rem;
+            font-size: 0.95rem;
             border: 2px solid var(--ibm-gray-30);
             background: var(--ibm-gray-100);
             color: var(--ibm-gray-10);
             outline: none;
-            transition: border-color 0.15s ease;
+            border-radius: 4px;
         }
 
-        .search-input:focus {
+        .chat-input:focus {
             border-color: var(--ibm-blue);
         }
 
-        .search-input::placeholder {
+        .chat-input::placeholder {
             color: var(--ibm-gray-60);
         }
 
-        .search-btn {
-            padding: 1rem 2.5rem;
+        .send-btn {
+            padding: 0.875rem 1.5rem;
             font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.875rem;
+            font-size: 0.8rem;
             font-weight: 500;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.05em;
             text-transform: uppercase;
             background: var(--ibm-blue);
             color: white;
-            border: 2px solid var(--ibm-blue);
+            border: none;
             cursor: pointer;
-            transition: background-color 0.15s ease;
+            border-radius: 4px;
+            transition: background-color 0.15s;
         }
 
-        .search-btn:hover {
+        .send-btn:hover {
             background: var(--ibm-blue-dark);
-            border-color: var(--ibm-blue-dark);
         }
 
-        .search-btn:disabled {
+        .send-btn:disabled {
             background: var(--ibm-gray-60);
-            border-color: var(--ibm-gray-60);
             cursor: not-allowed;
         }
 
-        /* History */
-        .history {
-            margin-top: 1.5rem;
-            padding-top: 1.5rem;
-            border-top: 1px solid var(--ibm-gray-90);
-        }
-
-        .history-label {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.65rem;
-            color: var(--ibm-gray-60);
-            text-transform: uppercase;
-            letter-spacing: 0.15em;
-            margin-bottom: 0.5rem;
-        }
-
-        .history-items {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.85rem;
-            color: var(--ibm-gray-30);
-        }
-
-        .clear-history {
+        .input-hint {
             margin-top: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .hint-text {
+            font-size: 0.7rem;
+            color: var(--ibm-gray-60);
+        }
+
+        .new-search-btn {
             font-family: 'IBM Plex Mono', monospace;
             font-size: 0.7rem;
             color: var(--ibm-blue);
@@ -220,337 +426,68 @@
             border: none;
             cursor: pointer;
             text-transform: uppercase;
-            letter-spacing: 0.1em;
-        }
-
-        .clear-history:hover {
-            text-decoration: underline;
-        }
-
-        /* Response Section */
-        .response-section {
-            opacity: 0;
-            transform: translateY(10px);
-            transition: opacity 0.3s ease, transform 0.3s ease;
-        }
-
-        .response-section.visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        .response-box {
-            background: var(--ibm-gray-10);
-            color: var(--ibm-gray-100);
-            padding: 2rem;
-            margin-bottom: 1.5rem;
-            position: relative;
-        }
-
-        .response-box::before {
-            content: 'SYSTEM OUTPUT';
-            position: absolute;
-            top: 0;
-            left: 0;
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.6rem;
-            font-weight: 500;
-            letter-spacing: 0.2em;
-            background: var(--ibm-blue);
-            color: white;
-            padding: 0.3rem 0.75rem;
-        }
-
-        .response-text {
-            font-family: 'IBM Plex Sans', sans-serif;
-            font-size: 0.95rem;
-            line-height: 1.9;
-            color: var(--ibm-gray-90);
-            white-space: pre-wrap;
-        }
-
-        .response-text a {
-            color: var(--ibm-blue-light);
-            text-decoration: none;
-            border-bottom: 1px solid var(--ibm-blue-light);
-            transition: color 0.15s ease, border-color 0.15s ease;
-        }
-
-        .response-text a:hover {
-            color: #78a9ff;
-            border-color: #78a9ff;
-        }
-
-        /* Results Header */
-        .results-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 0;
-            margin-bottom: 1rem;
-            border-bottom: 2px solid var(--ibm-gray-10);
-        }
-
-        .results-title {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.2em;
-            color: var(--ibm-gray-30);
-        }
-
-        .results-count {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.75rem;
-            color: var(--ibm-gray-60);
-        }
-
-        /* Results Grid */
-        .results-grid {
-            display: grid;
-            gap: 1px;
-            background: var(--ibm-gray-80);
-            border: 1px solid var(--ibm-gray-80);
-        }
-
-        .result-card {
-            display: grid;
-            grid-template-columns: 90px 1fr auto;
-            background: white;
-            transition: background-color 0.15s ease;
-        }
-
-        .result-card:hover {
-            background: var(--ibm-warm);
-        }
-
-        .result-image-container {
-            width: 90px;
-            height: 120px;
-            background: var(--ibm-gray-90);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-right: 1px solid var(--ibm-gray-80);
-        }
-
-        .result-image {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-
-        .result-image-placeholder {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.6rem;
-            color: var(--ibm-gray-60);
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-        }
-
-        .result-content {
-            padding: 1rem 1.5rem;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
-
-        .result-title {
-            font-family: 'IBM Plex Sans', sans-serif;
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--ibm-gray-10);
-            margin-bottom: 0.25rem;
-            line-height: 1.3;
-        }
-
-        .result-title a {
-            color: var(--ibm-gray-10);
-            text-decoration: none;
-            transition: color 0.15s ease;
-        }
-
-        .result-title a:hover {
-            color: var(--ibm-blue);
-        }
-
-        .result-meta {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.75rem;
-            color: var(--ibm-gray-60);
-            display: flex;
-            gap: 1.5rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .result-description {
-            font-size: 0.85rem;
-            color: var(--ibm-gray-30);
-            line-height: 1.5;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .result-data {
-            padding: 1rem 1.5rem;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: flex-end;
-            border-left: 1px solid var(--ibm-gray-90);
-            min-width: 140px;
-        }
-
-        .result-price {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 1rem;
-            font-weight: 600;
-            color: var(--ibm-gray-10);
-            margin-bottom: 0.25rem;
-        }
-
-        .result-isbn {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.65rem;
-            color: var(--ibm-gray-60);
-            margin-bottom: 0.5rem;
-        }
-
-        .result-similarity {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.6rem;
-            color: white;
-            background: var(--ibm-blue);
-            padding: 0.2rem 0.5rem;
             letter-spacing: 0.05em;
         }
 
-        /* Loading */
-        .loading {
+        .new-search-btn:hover {
+            text-decoration: underline;
+        }
+
+        /* Welcome message */
+        .welcome-message {
             text-align: center;
-            padding: 4rem 2rem;
-            font-family: 'IBM Plex Mono', monospace;
+            padding: 3rem 1rem;
             color: var(--ibm-gray-60);
         }
 
-        .loading-indicator {
-            display: inline-block;
-            width: 24px;
-            height: 24px;
-            border: 3px solid var(--ibm-gray-80);
-            border-top-color: var(--ibm-blue);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
+        .welcome-icon {
+            font-size: 2rem;
             margin-bottom: 1rem;
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 5rem 2rem;
-            background: white;
-            border: 1px solid var(--ibm-gray-80);
-        }
-
-        .empty-state-icon {
             font-family: 'IBM Plex Mono', monospace;
-            font-size: 3rem;
-            color: var(--ibm-gray-80);
-            margin-bottom: 1.5rem;
         }
 
-        .empty-state p {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.875rem;
-            color: var(--ibm-gray-60);
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
+        .welcome-message p {
+            font-size: 0.9rem;
+            max-width: 400px;
+            margin: 0 auto;
         }
 
-        /* Footer */
-        footer {
-            margin-top: 3rem;
-            padding: 2rem 0;
-            border-top: 2px solid var(--ibm-gray-10);
-        }
-
-        .footer-content {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .footer-text {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 0.7rem;
-            color: var(--ibm-gray-60);
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-        }
-
-        .footer-stripes {
+        /* Loading */
+        .typing-indicator {
             display: flex;
             gap: 4px;
+            padding: 1rem;
         }
 
-        .footer-stripes span {
-            width: 20px;
+        .typing-indicator span {
+            width: 8px;
             height: 8px;
-            background: var(--ibm-gray-80);
+            background: var(--ibm-gray-60);
+            border-radius: 50%;
+            animation: typing 1s infinite;
         }
 
-        .footer-stripes span:nth-child(1) { background: var(--ibm-blue); }
-        .footer-stripes span:nth-child(2) { background: var(--ibm-gray-30); }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
 
         /* Responsive */
         @media (max-width: 768px) {
-            .header-content {
-                flex-direction: column;
-                gap: 1rem;
-                text-align: center;
+            .message-user .message-content,
+            .message-bot .message-content {
+                max-width: 90%;
             }
 
-            .logo-section {
-                flex-direction: column;
+            .results-modal {
+                padding: 1rem;
             }
 
-            .system-info {
-                text-align: center;
-            }
-
-            .search-box {
-                flex-direction: column;
-            }
-
-            .result-card {
-                grid-template-columns: 1fr;
-            }
-
-            .result-image-container {
-                width: 100%;
-                height: 180px;
-                border-right: none;
-                border-bottom: 1px solid var(--ibm-gray-80);
-            }
-
-            .result-data {
-                border-left: none;
-                border-top: 1px solid var(--ibm-gray-90);
-                align-items: flex-start;
-                flex-direction: row;
-                justify-content: space-between;
-            }
-
-            .footer-content {
-                flex-direction: column;
-                gap: 1rem;
+            .results-modal-grid {
+                grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
             }
         }
     </style>
@@ -566,184 +503,238 @@
                         <span></span>
                         <span></span>
                         <span></span>
-                        <span></span>
                     </div>
                     <h1>Archivio</h1>
                 </div>
                 <div class="system-info">
-                    Sistema Ricerca Catalogo v2.0<br>
-                    Status: <span class="status">● Online</span>
+                    Catalogo libri d'arte<br>
+                    <span class="status">● Online</span>
                 </div>
             </div>
         </div>
     </header>
 
-    <main class="container">
-        <section class="search-section">
-            <label class="search-label">Input Query</label>
-            <div class="search-box">
-                <input 
-                    type="text" 
-                    class="search-input" 
-                    id="searchInput" 
-                    placeholder="Inserire termini di ricerca..."
-                    autofocus
-                >
-                <button class="search-btn" id="searchBtn">Esegui</button>
+    <main>
+        <div class="container">
+            <div class="chat-container" id="chatContainer">
+                <div class="welcome-message" id="welcomeMessage">
+                    <div class="welcome-icon">[ ]</div>
+                    <p>Cerca un artista, un tema o chiedi un consiglio. Posso aiutarti a trovare libri nel catalogo.</p>
+                </div>
             </div>
-
-            <div class="history" id="historyBox" style="display: none;">
-                <div class="history-label">Query Log</div>
-                <div class="history-items" id="historyItems"></div>
-                <button class="clear-history" id="clearHistory">[Reset Session]</button>
-            </div>
-        </section>
-
-        <section class="response-section" id="responseSection">
-            <div class="response-box">
-                <div class="response-text" id="responseText"></div>
-            </div>
-
-            <div class="results-header">
-                <h2 class="results-title">Record Trovati</h2>
-                <span class="results-count" id="resultsCount"></span>
-            </div>
-
-            <div class="results-grid" id="resultsGrid"></div>
-        </section>
-
-        <div class="empty-state" id="emptyState">
-            <div class="empty-state-icon">[ ]</div>
-            <p>In attesa di input</p>
-        </div>
-
-        <div class="loading" id="loadingState" style="display: none;">
-            <div class="loading-indicator"></div>
-            <p>Elaborazione query...</p>
         </div>
     </main>
 
-    <footer>
+    <div class="input-area">
         <div class="container">
-            <div class="footer-content">
-                <p class="footer-text">Sistema ricerca semantica · Nessun dato memorizzato</p>
-                <div class="footer-stripes">
+            <div class="input-box">
+                <input 
+                    type="text" 
+                    class="chat-input" 
+                    id="chatInput" 
+                    placeholder="Scrivi qui..."
+                    autofocus
+                >
+                <button class="send-btn" id="sendBtn">Invia</button>
+            </div>
+            <div class="input-hint">
+                <span class="hint-text">Prova: "Bruce Nauman", "fotografia giapponese", "consigliami un libro su..."</span>
+                <button class="new-search-btn" id="newSearchBtn">Nuova ricerca</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Modal -->
+    <div class="results-modal" id="resultsModal">
+        <div class="results-modal-content">
+            <div class="results-modal-header">
+                <span class="results-modal-title">Tutti i risultati</span>
+                <button class="results-modal-close" id="closeModal">&times;</button>
+            </div>
+            <div class="results-modal-grid" id="resultsModalGrid"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api/search';
+        
+        // Conversation context
+        let conversationContext = {
+            lastSearch: null,
+            lastResults: [],
+            lastFilters: {}
+        };
+
+        const chatContainer = document.getElementById('chatContainer');
+        const chatInput = document.getElementById('chatInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const welcomeMessage = document.getElementById('welcomeMessage');
+        const newSearchBtn = document.getElementById('newSearchBtn');
+        const resultsModal = document.getElementById('resultsModal');
+        const resultsModalGrid = document.getElementById('resultsModalGrid');
+        const closeModal = document.getElementById('closeModal');
+
+        function addMessage(content, isUser = false, results = null) {
+            if (welcomeMessage) {
+                welcomeMessage.style.display = 'none';
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'message-user' : 'message-bot'}`;
+
+            let html = `<div class="message-content">${content}`;
+
+            // Add results preview if available
+            if (results && results.length > 0) {
+                html += `
+                    <div class="results-preview">
+                        <div class="results-preview-title">${results.length} risultati trovati</div>
+                        <div class="results-mini-grid">
+                            ${results.slice(0, 5).map(book => `
+                                <a href="https://test01-frontend.vercel.app/books/${book.id}" target="_blank" class="result-mini-card">
+                                    <img src="${book.immagine || ''}" alt="" class="result-mini-img" onerror="this.style.display='none'">
+                                    <div class="result-mini-title">${truncate(book.titolo, 50)}</div>
+                                </a>
+                            `).join('')}
+                        </div>
+                        ${results.length > 5 ? `<button class="show-all-btn" onclick="showAllResults()">Mostra tutti (${results.length})</button>` : ''}
+                    </div>
+                `;
+            }
+
+            html += '</div>';
+            messageDiv.innerHTML = html;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function addTypingIndicator() {
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message message-bot';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = `
+                <div class="typing-indicator">
                     <span></span>
                     <span></span>
                     <span></span>
                 </div>
-            </div>
-        </div>
-    </footer>
+            `;
+            chatContainer.appendChild(typingDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
 
-    <script>
-        const API_URL = '/api/search';
-        let conversationHistory = [];
+        function removeTypingIndicator() {
+            const typing = document.getElementById('typingIndicator');
+            if (typing) typing.remove();
+        }
 
-        const searchInput = document.getElementById('searchInput');
-        const searchBtn = document.getElementById('searchBtn');
-        const historyBox = document.getElementById('historyBox');
-        const historyItems = document.getElementById('historyItems');
-        const clearHistory = document.getElementById('clearHistory');
-        const responseSection = document.getElementById('responseSection');
-        const responseText = document.getElementById('responseText');
-        const resultsCount = document.getElementById('resultsCount');
-        const resultsGrid = document.getElementById('resultsGrid');
-        const emptyState = document.getElementById('emptyState');
-        const loadingState = document.getElementById('loadingState');
+        function showAllResults() {
+            if (conversationContext.lastResults.length === 0) return;
 
-        async function performSearch() {
-            const query = searchInput.value.trim();
+            resultsModalGrid.innerHTML = conversationContext.lastResults.map(book => `
+                <div class="result-card">
+                    <img src="${book.immagine || ''}" alt="" class="result-card-img" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23e0e0e0%22 width=%22100%22 height=%22100%22/></svg>'">
+                    <div class="result-card-body">
+                        <div class="result-card-title">
+                            <a href="https://test01-frontend.vercel.app/books/${book.id}" target="_blank">${book.titolo || 'Senza titolo'}</a>
+                        </div>
+                        <div class="result-card-meta">${book.editore || ''} ${book.anno || ''}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            resultsModal.classList.add('visible');
+        }
+
+        async function sendMessage() {
+            const query = chatInput.value.trim();
             if (!query) return;
 
-            conversationHistory.push(query);
-            updateHistoryDisplay();
+            // Add user message
+            addMessage(query, true);
+            chatInput.value = '';
+            sendBtn.disabled = true;
 
-            emptyState.style.display = 'none';
-            loadingState.style.display = 'block';
-            responseSection.classList.remove('visible');
-            searchBtn.disabled = true;
+            // Show typing indicator
+            addTypingIndicator();
 
             try {
+                // Build request with context
+                const requestBody = {
+                    query: query,
+                    limit: 50
+                };
+
+                // If we have context, add it to help refine the search
+                if (conversationContext.lastSearch) {
+                    requestBody.context = {
+                        previousSearch: conversationContext.lastSearch,
+                        previousFilters: conversationContext.lastFilters
+                    };
+                }
+
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query: query, limit: 10 })
+                    body: JSON.stringify(requestBody)
                 });
 
                 if (!response.ok) throw new Error('Errore nella ricerca');
 
                 const data = await response.json();
                 if (data.error) throw new Error(data.error);
-                
-                displayResults(data);
+
+                // Update context
+                conversationContext.lastSearch = data.nome_cercato || query;
+                conversationContext.lastResults = data.risultati || [];
+                conversationContext.lastFilters = data.filtri || {};
+
+                // Remove typing and add response
+                removeTypingIndicator();
+                addMessage(data.risposta, false, data.risultati);
 
             } catch (error) {
-                console.error('Search error:', error);
-                responseText.textContent = 'ERRORE: ' + error.message;
-                responseSection.classList.add('visible');
+                removeTypingIndicator();
+                addMessage('Mi dispiace, c\'è stato un errore. Riprova.', false);
+                console.error('Error:', error);
             } finally {
-                loadingState.style.display = 'none';
-                searchBtn.disabled = false;
-                searchInput.value = '';
+                sendBtn.disabled = false;
+                chatInput.focus();
             }
         }
 
-        function displayResults(data) {
-            responseText.innerHTML = data.risposta;
-            resultsCount.textContent = `${data.risultati.length} record`;
-
-            resultsGrid.innerHTML = data.risultati.map(book => `
-                <article class="result-card">
-                    <div class="result-image-container">
-                        ${book.immagine 
-                            ? `<a href="https://test01-frontend.vercel.app/books/${book.id}" target="_blank"><img src="${book.immagine}" alt="${book.titolo}" class="result-image" onerror="this.outerHTML='<span class=\\'result-image-placeholder\\'>No Image</span>'"></a>`
-                            : '<span class="result-image-placeholder">No Image</span>'
-                        }
-                    </div>
-                    <div class="result-content">
-                        <h3 class="result-title"><a href="https://test01-frontend.vercel.app/books/${book.id}" target="_blank">${book.titolo || 'Senza titolo'}</a></h3>
-                        <div class="result-meta">
-                            <span>${book.editore || '—'}</span>
-                            <span>${book.anno || '—'}</span>
-                            <span>${book.lingua || '—'}</span>
-                        </div>
-                        <p class="result-description">${truncate(book.descrizione, 150)}</p>
-                    </div>
-                    <div class="result-data">
-                        <span class="result-price">${book.prezzo ? `€ ${book.prezzo}` : '—'}</span>
-                        <span class="result-isbn">${book.isbn || ''}</span>
-                        <span class="result-similarity">${book.tipo || (book.similarity ? Math.round(book.similarity * 100) + '%' : '')}</span>
-                    </div>
-                </article>
-            `).join('');
-
-            responseSection.classList.add('visible');
-        }
-
-        function updateHistoryDisplay() {
-            if (conversationHistory.length > 0) {
-                historyBox.style.display = 'block';
-                historyItems.textContent = conversationHistory.map((q, i) => `[${i+1}] ${q}`).join('  →  ');
-            } else {
-                historyBox.style.display = 'none';
-            }
+        function resetConversation() {
+            conversationContext = {
+                lastSearch: null,
+                lastResults: [],
+                lastFilters: {}
+            };
+            chatContainer.innerHTML = `
+                <div class="welcome-message" id="welcomeMessage">
+                    <div class="welcome-icon">[ ]</div>
+                    <p>Cerca un artista, un tema o chiedi un consiglio. Posso aiutarti a trovare libri nel catalogo.</p>
+                </div>
+            `;
         }
 
         function truncate(text, length) {
-            if (!text) return '—';
+            if (!text) return '';
             return text.length > length ? text.substring(0, length) + '...' : text;
         }
 
-        searchBtn.addEventListener('click', performSearch);
-        searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') performSearch();
+        // Event listeners
+        sendBtn.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
         });
-        clearHistory.addEventListener('click', () => {
-            conversationHistory = [];
-            updateHistoryDisplay();
-            responseSection.classList.remove('visible');
-            emptyState.style.display = 'block';
+        newSearchBtn.addEventListener('click', resetConversation);
+        closeModal.addEventListener('click', () => {
+            resultsModal.classList.remove('visible');
+        });
+        resultsModal.addEventListener('click', (e) => {
+            if (e.target === resultsModal) {
+                resultsModal.classList.remove('visible');
+            }
         });
     </script>
 </body>

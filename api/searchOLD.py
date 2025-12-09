@@ -13,21 +13,8 @@ claude = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 def get_db():
     return psycopg2.connect(os.environ.get("NEON_DATABASE_URL"))
 
-def extract_name_from_query(query: str, context: dict = None) -> dict:
-    """Usa Claude per estrarre nomi di artisti/autori e filtri dalla query, considerando il contesto."""
-    
-    context = context or {}
-    context_info = ""
-    
-    if context.get('previousSearch'):
-        context_info = f"""
-CONTESTO CONVERSAZIONE PRECEDENTE:
-- Ultima ricerca: "{context.get('previousSearch')}"
-- Filtri applicati: {context.get('previousFilters', {})}
-
-Se l'utente sta raffinando la ricerca precedente (es. "solo in inglese", "mostrami le monografie", "dopo il 2000"), 
-mantieni il nome della ricerca precedente e aggiungi/modifica i filtri.
-"""
+def extract_name_from_query(query: str) -> dict:
+    """Usa Claude per estrarre nomi di artisti/autori e filtri dalla query."""
     
     response = claude.messages.create(
         model="claude-sonnet-4-20250514",
@@ -35,54 +22,40 @@ mantieni il nome della ricerca precedente e aggiungi/modifica i filtri.
         messages=[{
             "role": "user",
             "content": f"""Analizza questa query di ricerca libri: "{query}"
-{context_info}
+
 Estrai:
 1. Se cerca libri DI o SU una persona specifica (artista, fotografo, autore, critico)
-2. Eventuali filtri: lingua, anno, periodo, tipo (monografia/collettiva)
-3. Se è un follow-up della ricerca precedente
+2. Eventuali filtri: lingua, anno, periodo
 
 Rispondi SOLO con un oggetto JSON valido (niente altro testo):
-- tipo: "nome" o "tematica" o "followup"
-- nome: "Nome Cognome" (se tipo=nome, oppure il nome dalla ricerca precedente se followup)
+- tipo: "nome" o "tematica"  
+- nome: "Nome Cognome" (se tipo=nome)
 - tema: "descrizione" (se tipo=tematica)
-- lingua: "EN", "IT", "DE", "FR", "JP", etc. (se specificata)
-- anno_min: numero (se specificato)
-- anno_max: numero (se specificato)
-- tipo_pub: "monografia" o "collettiva" o "autore" (se l'utente chiede un tipo specifico)
+- lingua: "EN", "IT", "DE", "FR", "JP", etc. (se specificata, altrimenti ometti)
+- anno_min: numero (se specificato, altrimenti ometti)
+- anno_max: numero (se specificato, altrimenti ometti)
 
 Esempi:
+"tutti i libri di Bruce Nauman" → {{"tipo": "nome", "nome": "Bruce Nauman"}}
 "Bruce Nauman" → {{"tipo": "nome", "nome": "Bruce Nauman"}}
-"solo in inglese" (dopo ricerca su Ghirri) → {{"tipo": "followup", "nome": "Luigi Ghirri", "lingua": "EN"}}
-"mostrami le monografie" (dopo ricerca) → {{"tipo": "followup", "nome": "[nome precedente]", "tipo_pub": "monografia"}}
-"dopo il 2000" → {{"tipo": "followup", "nome": "[nome precedente]", "anno_min": 2000}}
+"Luigi Ghirri in inglese" → {{"tipo": "nome", "nome": "Luigi Ghirri", "lingua": "EN"}}
+"Cindy Sherman libri italiani" → {{"tipo": "nome", "nome": "Cindy Sherman", "lingua": "IT"}}
 "fotografia giapponese anni 70" → {{"tipo": "tematica", "tema": "fotografia giapponese", "anno_min": 1970, "anno_max": 1979}}
+"Gerhard Richter dopo il 2000" → {{"tipo": "nome", "nome": "Gerhard Richter", "anno_min": 2000}}
 
 JSON:"""
         }]
     )
     
     try:
+        # Pulisci la risposta da eventuali markdown
         text = response.content[0].text.strip()
         if text.startswith("```"):
             text = text.split("```")[1]
             if text.startswith("json"):
                 text = text[4:]
         text = text.strip()
-        result = json.loads(text)
-        
-        # Se è un followup, usa il nome dal contesto se non specificato
-        if result.get('tipo') == 'followup' and context.get('previousSearch'):
-            if not result.get('nome') or result.get('nome') == '[nome precedente]':
-                result['nome'] = context.get('previousSearch')
-            result['tipo'] = 'nome'  # Trattalo come ricerca per nome
-            
-            # Merge dei filtri precedenti con i nuovi
-            prev_filters = context.get('previousFilters', {})
-            for key in ['lingua', 'anno_min', 'anno_max']:
-                if key not in result and key in prev_filters:
-                    result[key] = prev_filters[key]
-        
-        return result
+        return json.loads(text)
     except:
         return {"tipo": "tematica", "tema": query}
 
@@ -121,9 +94,6 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
     if filters.get('anno_max'):
         extra_conditions += " AND b.anno <= %s"
         extra_params.append(str(filters['anno_max']))
-    
-    # Filtro per tipo di pubblicazione
-    tipo_pub = filters.get('tipo_pub')
     
     # 1. Monografie: libri dove è l'unico artista E nome/cognome nel titolo
     cur.execute(f"""
@@ -218,38 +188,14 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
     columns = ['id', 'titolo', 'editore', 'anno', 'descrizione', 'prezzo', 
                'pagine', 'lingua', 'immagine', 'isbn', 'ranking', 'tipo']
     
-    result_dict = {
+    return {
         'monografie_titolo': [dict(zip(columns, r)) for r in monografie_titolo],
         'monografie': [dict(zip(columns, r)) for r in monografie],
         'collettive': [dict(zip(columns, r)) for r in collettive],
         'come_autore': [dict(zip(columns, r)) for r in come_autore],
         'citazioni': [dict(zip(columns, r)) for r in citazioni],
+        'totale': len(monografie_titolo) + len(monografie) + len(collettive) + len(come_autore) + len(citazioni)
     }
-    
-    # Filtra per tipo di pubblicazione se richiesto
-    if tipo_pub:
-        if tipo_pub == 'monografia':
-            result_dict['collettive'] = []
-            result_dict['come_autore'] = []
-            result_dict['citazioni'] = []
-        elif tipo_pub == 'collettiva':
-            result_dict['monografie_titolo'] = []
-            result_dict['monografie'] = []
-            result_dict['come_autore'] = []
-            result_dict['citazioni'] = []
-        elif tipo_pub == 'autore':
-            result_dict['monografie_titolo'] = []
-            result_dict['monografie'] = []
-            result_dict['collettive'] = []
-            result_dict['citazioni'] = []
-    
-    result_dict['totale'] = (len(result_dict['monografie_titolo']) + 
-                             len(result_dict['monografie']) + 
-                             len(result_dict['collettive']) + 
-                             len(result_dict['come_autore']) + 
-                             len(result_dict['citazioni']))
-    
-    return result_dict
 
 def search_semantic(query: str, limit: int = 10) -> list:
     """Ricerca semantica classica."""
@@ -471,13 +417,13 @@ class handler(BaseHTTPRequestHandler):
             return
         
         try:
-            # Estrai tipo di query (GET non ha contesto)
-            query_info = extract_name_from_query(query, None)
+            # Estrai tipo di query
+            query_info = extract_name_from_query(query)
             
             if query_info.get('tipo') == 'nome':
                 # Ricerca per nome con filtri
                 name = query_info['nome']
-                filters = {k: v for k, v in query_info.items() if k in ['lingua', 'anno_min', 'anno_max', 'tipo_pub']}
+                filters = {k: v for k, v in query_info.items() if k in ['lingua', 'anno_min', 'anno_max']}
                 results = search_by_name(name, filters, limit)
                 risposta = generate_response_for_name(name, results, filters)
                 
@@ -540,13 +486,12 @@ class handler(BaseHTTPRequestHandler):
                 }).encode())
                 return
             
-            # Estrai tipo di query con contesto
-            context = data.get('context', {})
-            query_info = extract_name_from_query(query, context)
+            # Estrai tipo di query
+            query_info = extract_name_from_query(query)
             
             if query_info.get('tipo') == 'nome':
                 name = query_info['nome']
-                filters = {k: v for k, v in query_info.items() if k in ['lingua', 'anno_min', 'anno_max', 'tipo_pub']}
+                filters = {k: v for k, v in query_info.items() if k in ['lingua', 'anno_min', 'anno_max']}
                 results = search_by_name(name, filters, limit)
                 risposta = generate_response_for_name(name, results, filters)
                 
