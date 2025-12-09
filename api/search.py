@@ -526,11 +526,14 @@ ISTRUZIONI:
     
     return response_text
 
-def generate_response_semantic(query: str, results: list) -> str:
-    """Genera risposta per ricerca semantica (esplorativa)."""
+def generate_response_semantic(query: str, results: list) -> dict:
+    """Genera risposta per ricerca semantica (esplorativa). Restituisce dict con risposta e suggerimenti."""
     
     if not results:
-        return "Non ho trovato risultati per questa ricerca. Prova con termini diversi o chiedimi un suggerimento su un tema specifico."
+        return {
+            "risposta": "Non ho trovato risultati per questa ricerca. Prova con termini diversi o chiedimi un suggerimento su un tema specifico.",
+            "suggerimenti": []
+        }
     
     # Raccogli libri per post-processing - includi ID nel contesto
     all_books = results[:7]
@@ -543,36 +546,52 @@ def generate_response_semantic(query: str, results: list) -> str:
     
     message = claude.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=400,
+        max_tokens=500,
         messages=[{
             "role": "user",
             "content": f"""Sei un bibliotecario specializzato in libri d'arte, fotografia e illustrazione.
-
-TONO:
-- Informativo, preciso, disponibile
-- Mai da venditore: niente aggettivi roboanti, niente enfasi promozionale
-- Colloquiale ma competente
 
 L'utente cerca: "{query}"
 
 RISULTATI TROVATI:
 {books_context}
 
-REGOLA FONDAMENTALE SUI LINK:
-OGNI VOLTA che menzioni un titolo di libro, DEVI usare questo formato: [[ID:xxx|Titolo]]
-NON esistono eccezioni. Se citi un libro, DEVE avere il link.
-NON scrivere mai un titolo senza il formato [[ID:xxx|Titolo]].
+Rispondi in JSON con questo formato esatto:
+{{
+  "risposta": "Il tuo testo di risposta qui. Quando citi un libro usa [[ID:xxx|Titolo]]",
+  "suggerimenti": ["Suggerimento 1", "Suggerimento 2", "Suggerimento 3"]
+}}
 
-ISTRUZIONI:
-1. Presenta brevemente cosa hai trovato
-2. Cita 3-5 libri, SEMPRE nel formato [[ID:xxx|Titolo esatto come fornito]]
-3. Suggerisci come affinare la ricerca
-4. Risposte brevi, conversazionali
+REGOLE:
+1. "risposta": testo breve e conversazionale, cita 2-4 libri nel formato [[ID:xxx|Titolo]]
+2. "suggerimenti": 3-5 parole/frasi brevi per affinare la ricerca (es. ["fotografia", "pittura", "anni 70", "artisti italiani"])
+   - I suggerimenti devono essere BREVI (1-3 parole max)
+   - Devono aiutare a restringere/specificare la ricerca
+   - Se la ricerca è già specifica, suggerimenti può essere vuoto []
+3. OGNI libro citato DEVE usare il formato [[ID:xxx|Titolo]]
+4. Rispondi SOLO con il JSON, nient'altro
 5. Rispondi nella lingua dell'utente"""
         }]
     )
     
-    response_text = message.content[0].text
+    response_text = message.content[0].text.strip()
+    
+    # Parse JSON response
+    try:
+        # Pulisci eventuali markdown
+        if response_text.startswith("```"):
+            response_text = response_text.split("```")[1]
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+        response_text = response_text.strip()
+        
+        result = json.loads(response_text)
+        risposta = result.get("risposta", "")
+        suggerimenti = result.get("suggerimenti", [])
+    except:
+        # Fallback se JSON parsing fallisce
+        risposta = response_text
+        suggerimenti = []
     
     # Post-processing: converti [[ID:xxx|Titolo]] in link HTML
     import re
@@ -581,9 +600,12 @@ ISTRUZIONI:
         title = match.group(2)
         return f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{title}</a>'
     
-    response_text = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, response_text)
+    risposta = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, risposta)
     
-    return response_text
+    return {
+        "risposta": risposta,
+        "suggerimenti": suggerimenti
+    }
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -662,11 +684,12 @@ class handler(BaseHTTPRequestHandler):
             else:
                 # Ricerca semantica
                 results = search_semantic(query, limit)
-                risposta = generate_response_semantic(query, results)
+                response_data = generate_response_semantic(query, results)
                 
                 self.wfile.write(json.dumps({
                     "tipo_ricerca": "semantica",
-                    "risposta": risposta,
+                    "risposta": response_data["risposta"],
+                    "suggerimenti": response_data.get("suggerimenti", []),
                     "risultati": results
                 }, default=str).encode())
                 
@@ -794,11 +817,12 @@ class handler(BaseHTTPRequestHandler):
                 }, default=str).encode())
             else:
                 results = search_semantic(query, limit)
-                risposta = generate_response_semantic(query, results)
+                response_data = generate_response_semantic(query, results)
                 
                 self.wfile.write(json.dumps({
                     "tipo_ricerca": "semantica",
-                    "risposta": risposta,
+                    "risposta": response_data["risposta"],
+                    "suggerimenti": response_data.get("suggerimenti", []),
                     "risultati": results
                 }, default=str).encode())
                 
