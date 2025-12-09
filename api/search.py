@@ -14,7 +14,7 @@ def get_db():
     return psycopg2.connect(os.environ.get("NEON_DATABASE_URL"))
 
 def extract_name_from_query(query: str, context: dict = None) -> dict:
-    """Usa Claude per estrarre nomi di artisti/autori e filtri dalla query, considerando il contesto."""
+    """Usa Claude per estrarre nomi di artisti/autori, titoli e filtri dalla query, considerando il contesto."""
     
     context = context or {}
     context_info = ""
@@ -37,13 +37,16 @@ mantieni il nome della ricerca precedente e aggiungi/modifica i filtri.
             "content": f"""Analizza questa query di ricerca libri: "{query}"
 {context_info}
 Estrai:
-1. Se cerca libri DI o SU una persona specifica (artista, fotografo, autore, critico)
-2. Eventuali filtri: lingua, anno, periodo, tipo (monografia/collettiva)
-3. Se è un follow-up della ricerca precedente
+1. Se cerca un TITOLO SPECIFICO di libro (es. "hai il libro X", "cerco il catalogo Y", titolo tra virgolette)
+2. Se cerca libri DI o SU una persona specifica (artista, fotografo, autore)
+3. Se è una ricerca tematica generica
+4. Eventuali filtri: lingua, anno, periodo, tipo (monografia/collettiva)
+5. Se è un follow-up della ricerca precedente
 
 Rispondi SOLO con un oggetto JSON valido (niente altro testo):
-- tipo: "nome" o "tematica" o "followup"
-- nome: "Nome Cognome" (se tipo=nome, oppure il nome dalla ricerca precedente se followup)
+- tipo: "titolo" o "nome" o "tematica" o "followup"
+- titolo: "titolo cercato" (se tipo=titolo)
+- nome: "Nome Cognome" (se tipo=nome)
 - tema: "descrizione" (se tipo=tematica)
 - lingua: "EN", "IT", "DE", "FR", "JP", etc. (se specificata)
 - anno_min: numero (se specificato)
@@ -51,11 +54,15 @@ Rispondi SOLO con un oggetto JSON valido (niente altro testo):
 - tipo_pub: "monografia" o "collettiva" o "autore" (se l'utente chiede un tipo specifico)
 
 Esempi:
+"Bruce Nauman. Inventa e muori" → {{"tipo": "titolo", "titolo": "Inventa e muori"}}
+"hai il catalogo When attitudes become form?" → {{"tipo": "titolo", "titolo": "When attitudes become form"}}
+"cerco Live in your head" → {{"tipo": "titolo", "titolo": "Live in your head"}}
 "Bruce Nauman" → {{"tipo": "nome", "nome": "Bruce Nauman"}}
+"libri di Bruce Nauman" → {{"tipo": "nome", "nome": "Bruce Nauman"}}
 "solo in inglese" (dopo ricerca su Ghirri) → {{"tipo": "followup", "nome": "Luigi Ghirri", "lingua": "EN"}}
-"mostrami le monografie" (dopo ricerca) → {{"tipo": "followup", "nome": "[nome precedente]", "tipo_pub": "monografia"}}
-"dopo il 2000" → {{"tipo": "followup", "nome": "[nome precedente]", "anno_min": 2000}}
 "fotografia giapponese anni 70" → {{"tipo": "tematica", "tema": "fotografia giapponese", "anno_min": 1970, "anno_max": 1979}}
+
+IMPORTANTE: Se la query contiene un titolo specifico di libro (riconoscibile da maiuscole, punteggiatura, o parole come "catalogo", "libro", "hai"), usa tipo="titolo".
 
 JSON:"""
         }]
@@ -85,6 +92,84 @@ JSON:"""
         return result
     except:
         return {"tipo": "tematica", "tema": query}
+
+def search_by_title(title: str, limit: int = 20) -> list:
+    """Cerca libri per titolo esatto o parziale."""
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    title_lower = title.lower().strip()
+    pattern = f"%{title_lower}%"
+    
+    cur.execute("""
+        SELECT b.id, b.titolo, b.editore, b.anno, b.descrizione,
+               b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo
+        FROM public.books b
+        WHERE LOWER(b.titolo) LIKE %s
+        ORDER BY 
+            CASE WHEN LOWER(b.titolo) = %s THEN 0
+                 WHEN LOWER(b.titolo) LIKE %s THEN 1
+                 ELSE 2 END,
+            b.anno DESC
+        LIMIT %s
+    """, (pattern, title_lower, title_lower + '%', limit))
+    
+    columns = ['id', 'titolo', 'editore', 'anno', 'descrizione', 'prezzo', 
+               'pagine', 'lingua', 'immagine', 'isbn']
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+    
+    cur.close()
+    conn.close()
+    
+    return results
+
+def generate_response_for_title(title: str, results: list) -> str:
+    """Genera risposta per ricerca per titolo."""
+    
+    if not results:
+        return f"Non ho trovato libri con titolo \"{title}\". Prova con parole chiave diverse o cerca per autore/artista."
+    
+    # Raccogli libri per post-processing
+    all_books = results[:10]
+    
+    books_context = "\n".join([
+        f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']}) - Lingua: {r['lingua']}"
+        for r in all_books
+    ])
+    
+    message = claude.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=300,
+        messages=[{
+            "role": "user",
+            "content": f"""Sei un bibliotecario specializzato in libri d'arte.
+
+L'utente cerca il titolo: "{title}"
+
+RISULTATI TROVATI ({len(results)} titoli):
+{books_context}
+
+ISTRUZIONI:
+- Se c'è un match esatto o molto simile, conferma: "Sì, abbiamo [titolo]"
+- Elenca i risultati trovati con editore, anno e lingua
+- I titoli tra virgolette saranno linkati automaticamente
+- Se ci sono più risultati, chiedi se l'utente cerca una edizione specifica
+- Risposte brevi e dirette"""
+        }]
+    )
+    
+    response_text = message.content[0].text
+    
+    # Post-processing: sostituisci i titoli con link
+    for book in all_books:
+        titolo = book['titolo']
+        book_id = book['id']
+        link = f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{titolo}</a>'
+        response_text = response_text.replace(f'"{titolo}"', link)
+        response_text = response_text.replace(f'«{titolo}»', link)
+    
+    return response_text
 
 def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
     """Cerca tutti i libri collegati a un nome, con ranking e filtri."""
@@ -474,7 +559,19 @@ class handler(BaseHTTPRequestHandler):
             # Estrai tipo di query (GET non ha contesto)
             query_info = extract_name_from_query(query, None)
             
-            if query_info.get('tipo') == 'nome':
+            if query_info.get('tipo') == 'titolo':
+                # Ricerca per titolo
+                title = query_info['titolo']
+                results = search_by_title(title, limit)
+                risposta = generate_response_for_title(title, results)
+                
+                self.wfile.write(json.dumps({
+                    "tipo_ricerca": "titolo",
+                    "titolo_cercato": title,
+                    "risposta": risposta,
+                    "risultati": results
+                }, default=str).encode())
+            elif query_info.get('tipo') == 'nome':
                 # Ricerca per nome con filtri
                 name = query_info['nome']
                 filters = {k: v for k, v in query_info.items() if k in ['lingua', 'anno_min', 'anno_max', 'tipo_pub']}
@@ -544,7 +641,19 @@ class handler(BaseHTTPRequestHandler):
             context = data.get('context', {})
             query_info = extract_name_from_query(query, context)
             
-            if query_info.get('tipo') == 'nome':
+            if query_info.get('tipo') == 'titolo':
+                # Ricerca per titolo
+                title = query_info['titolo']
+                results = search_by_title(title, limit)
+                risposta = generate_response_for_title(title, results)
+                
+                self.wfile.write(json.dumps({
+                    "tipo_ricerca": "titolo",
+                    "titolo_cercato": title,
+                    "risposta": risposta,
+                    "risultati": results
+                }, default=str).encode())
+            elif query_info.get('tipo') == 'nome':
                 name = query_info['nome']
                 filters = {k: v for k, v in query_info.items() if k in ['lingua', 'anno_min', 'anno_max', 'tipo_pub']}
                 results = search_by_name(name, filters, limit)
