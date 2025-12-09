@@ -254,6 +254,57 @@
             color: white;
         }
 
+        /* Filter buttons */
+        .filter-buttons {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--ibm-gray-90);
+        }
+
+        .filter-buttons-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.7rem;
+            color: var(--ibm-gray-60);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.5rem;
+        }
+
+        .filter-buttons-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .filter-btn {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            padding: 0.4rem 0.75rem;
+            border: 1px solid var(--ibm-gray-80);
+            background: white;
+            color: var(--ibm-gray-30);
+            cursor: pointer;
+            transition: all 0.15s;
+            border-radius: 3px;
+        }
+
+        .filter-btn:hover {
+            border-color: var(--ibm-blue);
+            color: var(--ibm-blue);
+        }
+
+        .filter-btn.active {
+            background: var(--ibm-blue);
+            border-color: var(--ibm-blue);
+            color: white;
+        }
+
+        .filter-btn .count {
+            opacity: 0.7;
+            margin-left: 0.3rem;
+        }
+
         /* Full results modal */
         .results-modal {
             display: none;
@@ -574,7 +625,7 @@
         const resultsModalGrid = document.getElementById('resultsModalGrid');
         const closeModal = document.getElementById('closeModal');
 
-        function addMessage(content, isUser = false, results = null) {
+        function addMessage(content, isUser = false, data = null) {
             if (welcomeMessage) {
                 welcomeMessage.style.display = 'none';
             }
@@ -584,7 +635,43 @@
 
             let html = `<div class="message-content">${content}`;
 
+            // Add filter buttons if available (for name searches)
+            if (data && data.filtri_disponibili && data.tipo_ricerca === 'nome') {
+                const filters = data.filtri_disponibili;
+                html += `<div class="filter-buttons">`;
+                html += `<div class="filter-buttons-label">Filtra risultati:</div>`;
+                
+                // Tipo pubblicazione buttons
+                if (filters.tipi) {
+                    html += `<div class="filter-buttons-row">`;
+                    if (filters.tipi.monografia > 0) {
+                        html += `<button class="filter-btn" onclick="applyFilter('tipo_pub', 'monografia')">Monografie <span class="count">(${filters.tipi.monografia})</span></button>`;
+                    }
+                    if (filters.tipi.collettiva > 0) {
+                        html += `<button class="filter-btn" onclick="applyFilter('tipo_pub', 'collettiva')">Collettive <span class="count">(${filters.tipi.collettiva})</span></button>`;
+                    }
+                    if (filters.tipi.autore > 0) {
+                        html += `<button class="filter-btn" onclick="applyFilter('tipo_pub', 'autore')">Come autore <span class="count">(${filters.tipi.autore})</span></button>`;
+                    }
+                    html += `</div>`;
+                }
+                
+                // Lingua buttons
+                if (filters.lingue && Object.keys(filters.lingue).length > 1) {
+                    html += `<div class="filter-buttons-row">`;
+                    const langNames = {'IT': 'Italiano', 'EN': 'English', 'DE': 'Deutsch', 'FR': 'Français', 'ES': 'Español'};
+                    for (const [lang, count] of Object.entries(filters.lingue).slice(0, 5)) {
+                        const langName = langNames[lang] || lang;
+                        html += `<button class="filter-btn" onclick="applyFilter('lingua', '${lang}')">${langName} <span class="count">(${count})</span></button>`;
+                    }
+                    html += `</div>`;
+                }
+                
+                html += `</div>`;
+            }
+
             // Add results preview if available
+            const results = data ? data.risultati : null;
             if (results && results.length > 0) {
                 html += `
                     <div class="results-preview">
@@ -606,6 +693,48 @@
             messageDiv.innerHTML = html;
             chatContainer.appendChild(messageDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        async function applyFilter(filterType, filterValue) {
+            // Applica filtro alla ricerca corrente senza usare Claude
+            if (!conversationContext.lastSearch) return;
+            
+            // Aggiorna filtri
+            conversationContext.lastFilters[filterType] = filterValue;
+            
+            // Mostra messaggio utente
+            const filterNames = {
+                'tipo_pub': {'monografia': 'solo monografie', 'collettiva': 'solo collettive', 'autore': 'come autore'},
+                'lingua': {'IT': 'in italiano', 'EN': 'in inglese', 'DE': 'in tedesco', 'FR': 'in francese'}
+            };
+            const filterText = filterNames[filterType]?.[filterValue] || `${filterType}: ${filterValue}`;
+            addMessage(filterText, true);
+            
+            // Show typing
+            addTypingIndicator();
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: conversationContext.lastSearch,
+                        limit: 50,
+                        filters: conversationContext.lastFilters
+                    })
+                });
+                
+                const data = await response.json();
+                
+                conversationContext.lastResults = data.risultati || [];
+                
+                removeTypingIndicator();
+                addMessage(data.risposta, false, data);
+                
+            } catch (error) {
+                removeTypingIndicator();
+                addMessage('Errore nell\'applicare il filtro.', false);
+            }
         }
 
         function addTypingIndicator() {
@@ -685,13 +814,13 @@
                 if (data.error) throw new Error(data.error);
 
                 // Update context
-                conversationContext.lastSearch = data.nome_cercato || query;
+                conversationContext.lastSearch = data.nome_cercato || data.titolo_cercato || query;
                 conversationContext.lastResults = data.risultati || [];
                 conversationContext.lastFilters = data.filtri || {};
 
-                // Remove typing and add response
+                // Remove typing and add response with full data (for filter buttons)
                 removeTypingIndicator();
-                addMessage(data.risposta, false, data.risultati);
+                addMessage(data.risposta, false, data);
 
             } catch (error) {
                 removeTypingIndicator();

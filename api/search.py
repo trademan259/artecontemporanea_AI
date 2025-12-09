@@ -334,6 +334,41 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
                              len(result_dict['come_autore']) + 
                              len(result_dict['citazioni']))
     
+    # Calcola filtri disponibili per i bottoni
+    all_results = (result_dict['monografie_titolo'] + result_dict['monografie'] + 
+                   result_dict['collettive'] + result_dict['come_autore'] + result_dict['citazioni'])
+    
+    # Lingue disponibili
+    lingue = {}
+    for r in all_results:
+        lang = r.get('lingua', '').strip().upper()
+        if lang:
+            # Normalizza le lingue comuni
+            if lang in ['I', 'IT', 'ITA', 'ITALIANO']:
+                lang = 'IT'
+            elif lang in ['E', 'EN', 'ENG', 'ENGLISH']:
+                lang = 'EN'
+            elif lang in ['D', 'DE', 'DEU', 'DEUTSCH']:
+                lang = 'DE'
+            elif lang in ['F', 'FR', 'FRA', 'FRANCAIS']:
+                lang = 'FR'
+            lingue[lang] = lingue.get(lang, 0) + 1
+    
+    # Anni - trova range
+    anni = [int(r.get('anno', 0)) for r in all_results if r.get('anno') and str(r.get('anno')).isdigit()]
+    anno_min = min(anni) if anni else None
+    anno_max = max(anni) if anni else None
+    
+    result_dict['filtri_disponibili'] = {
+        'lingue': dict(sorted(lingue.items(), key=lambda x: -x[1])),  # Ordinate per frequenza
+        'tipi': {
+            'monografia': len(result_dict['monografie_titolo']) + len(result_dict['monografie']),
+            'collettiva': len(result_dict['collettive']),
+            'autore': len(result_dict['come_autore'])
+        },
+        'anni': {'min': anno_min, 'max': anno_max}
+    }
+    
     return result_dict
 
 def search_semantic(query: str, limit: int = 10) -> list:
@@ -593,6 +628,7 @@ class handler(BaseHTTPRequestHandler):
                     "filtri": filters,
                     "risposta": risposta,
                     "risultati": all_results,
+                    "filtri_disponibili": results.get('filtri_disponibili', {}),
                     "conteggi": {
                         "monografie": len(results['monografie_titolo']) + len(results['monografie']),
                         "collettive": len(results['collettive']),
@@ -630,11 +666,43 @@ class handler(BaseHTTPRequestHandler):
             data = json.loads(body)
             query = data.get('query', '')
             limit = data.get('limit', 50)
+            direct_filters = data.get('filters', None)  # Filtri diretti dai bottoni
             
             if not query:
                 self.wfile.write(json.dumps({
                     "error": "Query richiesta"
                 }).encode())
+                return
+            
+            # Se ci sono filtri diretti, salta Claude e fai ricerca diretta per nome
+            if direct_filters:
+                name = query  # query è il nome dell'artista
+                results = search_by_name(name, direct_filters, limit)
+                risposta = generate_response_for_name(name, results, direct_filters)
+                
+                all_results = (
+                    results['monografie_titolo'] + 
+                    results['monografie'] + 
+                    results['collettive'] + 
+                    results['come_autore'] + 
+                    results['citazioni'][:20]
+                )
+                
+                self.wfile.write(json.dumps({
+                    "tipo_ricerca": "nome",
+                    "nome_cercato": name,
+                    "filtri": direct_filters,
+                    "risposta": risposta,
+                    "risultati": all_results,
+                    "filtri_disponibili": results.get('filtri_disponibili', {}),
+                    "conteggi": {
+                        "monografie": len(results['monografie_titolo']) + len(results['monografie']),
+                        "collettive": len(results['collettive']),
+                        "come_autore": len(results['come_autore']),
+                        "citazioni": len(results['citazioni']),
+                        "totale": results['totale']
+                    }
+                }, default=str).encode())
                 return
             
             # Estrai tipo di query con contesto
@@ -673,6 +741,7 @@ class handler(BaseHTTPRequestHandler):
                     "filtri": filters,
                     "risposta": risposta,
                     "risultati": all_results,
+                    "filtri_disponibili": results.get('filtri_disponibili', {}),
                     "conteggi": {
                         "monografie": len(results['monografie_titolo']) + len(results['monografie']),
                         "collettive": len(results['collettive']),
