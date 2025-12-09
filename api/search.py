@@ -27,16 +27,17 @@ Estrai:
 1. Se cerca libri DI o SU una persona specifica (artista, fotografo, autore, critico)
 2. Eventuali filtri: lingua, anno, periodo
 
-Rispondi SOLO in JSON con questi campi:
-- tipo: "nome" o "tematica"
+Rispondi SOLO con un oggetto JSON valido (niente altro testo):
+- tipo: "nome" o "tematica"  
 - nome: "Nome Cognome" (se tipo=nome)
 - tema: "descrizione" (se tipo=tematica)
-- lingua: "EN", "IT", "DE", "FR", "JP", etc. (se specificata)
-- anno_min: numero (se specificato)
-- anno_max: numero (se specificato)
+- lingua: "EN", "IT", "DE", "FR", "JP", etc. (se specificata, altrimenti ometti)
+- anno_min: numero (se specificato, altrimenti ometti)
+- anno_max: numero (se specificato, altrimenti ometti)
 
 Esempi:
 "tutti i libri di Bruce Nauman" → {{"tipo": "nome", "nome": "Bruce Nauman"}}
+"Bruce Nauman" → {{"tipo": "nome", "nome": "Bruce Nauman"}}
 "Luigi Ghirri in inglese" → {{"tipo": "nome", "nome": "Luigi Ghirri", "lingua": "EN"}}
 "Cindy Sherman libri italiani" → {{"tipo": "nome", "nome": "Cindy Sherman", "lingua": "IT"}}
 "fotografia giapponese anni 70" → {{"tipo": "tematica", "tema": "fotografia giapponese", "anno_min": 1970, "anno_max": 1979}}
@@ -47,7 +48,14 @@ JSON:"""
     )
     
     try:
-        return json.loads(response.content[0].text.strip())
+        # Pulisci la risposta da eventuali markdown
+        text = response.content[0].text.strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        text = text.strip()
+        return json.loads(text)
     except:
         return {"tipo": "tematica", "tema": query}
 
@@ -308,9 +316,7 @@ Rispondi nella lingua dell'utente."""
     for book in all_books:
         titolo = book['titolo']
         book_id = book['id']
-        # Cerca il titolo tra virgolette e sostituiscilo con un link
         link = f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{titolo}</a>'
-        # Sostituisci "Titolo" con il link
         response_text = response_text.replace(f'"{titolo}"', link)
         response_text = response_text.replace(f'«{titolo}»', link)
     
@@ -322,9 +328,12 @@ def generate_response_semantic(query: str, results: list) -> str:
     if not results:
         return "Nessun risultato trovato per questa ricerca."
     
+    # Raccogli libri per post-processing
+    all_books = results[:7]
+    
     books_context = "\n".join([
         f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})"
-        for r in results[:7]
+        for r in all_books
     ])
     
     message = claude.messages.create(
@@ -345,7 +354,17 @@ Rispondi nella lingua dell'utente."""
         }]
     )
     
-    return message.content[0].text
+    response_text = message.content[0].text
+    
+    # Post-processing: sostituisci i titoli con link
+    for book in all_books:
+        titolo = book['titolo']
+        book_id = book['id']
+        link = f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{titolo}</a>'
+        response_text = response_text.replace(f'"{titolo}"', link)
+        response_text = response_text.replace(f'«{titolo}»', link)
+    
+    return response_text
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -397,6 +416,7 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({
                     "tipo_ricerca": "nome",
                     "nome_cercato": name,
+                    "filtri": filters,
                     "risposta": risposta,
                     "risultati": all_results,
                     "conteggi": {
@@ -463,6 +483,7 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({
                     "tipo_ricerca": "nome",
                     "nome_cercato": name,
+                    "filtri": filters,
                     "risposta": risposta,
                     "risultati": all_results,
                     "conteggi": {
