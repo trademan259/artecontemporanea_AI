@@ -6,14 +6,150 @@ from urllib.parse import parse_qs, urlparse
 import voyageai
 import anthropic
 
-# Clients (inizializzati una volta per container)
+# Clients
 vo = voyageai.Client(api_key=os.environ.get("VOYAGE_API_KEY"))
 claude = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 def get_db():
     return psycopg2.connect(os.environ.get("NEON_DATABASE_URL"))
 
-def search_books(query: str, limit: int = 10) -> list:
+def extract_name_from_query(query: str) -> dict:
+    """Usa Claude per estrarre nomi di artisti/autori dalla query."""
+    
+    response = claude.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=200,
+        messages=[{
+            "role": "user",
+            "content": f"""Analizza questa query di ricerca libri: "{query}"
+
+Se la query cerca libri DI o SU una persona specifica (artista, fotografo, autore, critico), estrai il nome.
+
+Rispondi SOLO in JSON:
+- Se c'è un nome: {{"tipo": "nome", "nome": "Nome Cognome"}}
+- Se è una ricerca tematica: {{"tipo": "tematica", "tema": "descrizione breve"}}
+
+Esempi:
+"tutti i libri di Bruce Nauman" → {{"tipo": "nome", "nome": "Bruce Nauman"}}
+"fotografia giapponese anni 70" → {{"tipo": "tematica", "tema": "fotografia giapponese anni 70"}}
+"cataloghi di Luigi Ghirri" → {{"tipo": "nome", "nome": "Luigi Ghirri"}}
+"arte concettuale" → {{"tipo": "tematica", "tema": "arte concettuale"}}
+
+JSON:"""
+        }]
+    )
+    
+    try:
+        return json.loads(response.content[0].text.strip())
+    except:
+        return {"tipo": "tematica", "tema": query}
+
+def search_by_name(name: str, limit: int = 100) -> dict:
+    """Cerca tutti i libri collegati a un nome, con ranking."""
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    name_lower = name.lower()
+    name_pattern = f"%{name_lower}%"
+    
+    # 1. Monografie: libri dove è l'unico artista E nome nel titolo
+    cur.execute("""
+        SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione, 
+               b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+               1 as ranking, 'monografia_titolo' as tipo
+        FROM public.books b
+        JOIN public.book_artists ba ON b.id = ba.book_id
+        WHERE LOWER(ba.artist) LIKE %s
+          AND LOWER(b.titolo) LIKE %s
+          AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) = 1
+        ORDER BY b.anno DESC
+    """, (name_pattern, name_pattern))
+    monografie_titolo = cur.fetchall()
+    
+    # 2. Monografie: unico artista, nome non nel titolo
+    cur.execute("""
+        SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione,
+               b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+               2 as ranking, 'monografia' as tipo
+        FROM public.books b
+        JOIN public.book_artists ba ON b.id = ba.book_id
+        WHERE LOWER(ba.artist) LIKE %s
+          AND LOWER(b.titolo) NOT LIKE %s
+          AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) = 1
+        ORDER BY b.anno DESC
+    """, (name_pattern, name_pattern))
+    monografie = cur.fetchall()
+    
+    # 3. Collettive: più artisti
+    cur.execute("""
+        SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione,
+               b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+               3 as ranking, 'collettiva' as tipo
+        FROM public.books b
+        JOIN public.book_artists ba ON b.id = ba.book_id
+        WHERE LOWER(ba.artist) LIKE %s
+          AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) > 1
+        ORDER BY b.anno DESC
+    """, (name_pattern,))
+    collettive = cur.fetchall()
+    
+    # 4. Come autore (testi critici, saggi)
+    cur.execute("""
+        SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione,
+               b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+               4 as ranking, 'autore' as tipo
+        FROM public.books b
+        JOIN public.book_authors bau ON b.id = bau.book_id
+        WHERE LOWER(bau.author) LIKE %s
+        ORDER BY b.anno DESC
+    """, (name_pattern,))
+    come_autore = cur.fetchall()
+    
+    # 5. Citazioni in descrizione (non già trovati)
+    found_ids = [r[0] for r in monografie_titolo + monografie + collettive + come_autore]
+    if found_ids:
+        cur.execute("""
+            SELECT b.id, b.titolo, b.editore, b.anno, b.descrizione,
+                   b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+                   5 as ranking, 'citazione' as tipo
+            FROM public.books b
+            WHERE (LOWER(b.descrizione) LIKE %s OR LOWER(b.titolo) LIKE %s)
+              AND b.id NOT IN %s
+            ORDER BY b.anno DESC
+            LIMIT 50
+        """, (name_pattern, name_pattern, tuple(found_ids) if found_ids else (0,)))
+    else:
+        cur.execute("""
+            SELECT b.id, b.titolo, b.editore, b.anno, b.descrizione,
+                   b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+                   5 as ranking, 'citazione' as tipo
+            FROM public.books b
+            WHERE LOWER(b.descrizione) LIKE %s OR LOWER(b.titolo) LIKE %s
+            ORDER BY b.anno DESC
+            LIMIT 50
+        """, (name_pattern, name_pattern))
+    citazioni = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    # Formatta risultati
+    columns = ['id', 'titolo', 'editore', 'anno', 'descrizione', 'prezzo', 
+               'pagine', 'lingua', 'immagine', 'isbn', 'ranking', 'tipo']
+    
+    return {
+        'monografie_titolo': [dict(zip(columns, r)) for r in monografie_titolo],
+        'monografie': [dict(zip(columns, r)) for r in monografie],
+        'collettive': [dict(zip(columns, r)) for r in collettive],
+        'come_autore': [dict(zip(columns, r)) for r in come_autore],
+        'citazioni': [dict(zip(columns, r)) for r in citazioni],
+        'totale': len(monografie_titolo) + len(monografie) + len(collettive) + len(come_autore) + len(citazioni)
+    }
+
+def search_semantic(query: str, limit: int = 10) -> list:
+    """Ricerca semantica classica."""
+    
     result = vo.embed([query], model="voyage-3-lite", input_type="query")
     query_embedding = result.embeddings[0]
     
@@ -21,9 +157,8 @@ def search_books(query: str, limit: int = 10) -> list:
     cur = conn.cursor()
     cur.execute("""
         SELECT 
-            id, titolo, editore, anno, descrizione, tag, 
-            prezzo_def_euro_web, pagine, lingua, rilegatura, 
-            formato, permalinkimmagine, isbn_expo,
+            id, titolo, editore, anno, descrizione, 
+            prezzo_def_euro_web, pagine, lingua, permalinkimmagine, isbn_expo,
             1 - (embedding <=> %s::vector) as similarity
         FROM public.books
         WHERE embedding IS NOT NULL
@@ -31,21 +166,81 @@ def search_books(query: str, limit: int = 10) -> list:
         LIMIT %s
     """, (query_embedding, query_embedding, limit))
     
-    columns = ['id', 'titolo', 'editore', 'anno', 'descrizione', 'tag', 
-               'prezzo', 'pagine', 'lingua', 'rilegatura', 'formato', 
-               'immagine', 'isbn', 'similarity']
+    columns = ['id', 'titolo', 'editore', 'anno', 'descrizione', 'prezzo', 
+               'pagine', 'lingua', 'immagine', 'isbn', 'similarity']
     results = [dict(zip(columns, row)) for row in cur.fetchall()]
     cur.close()
     conn.close()
     
     return results
 
-def generate_response(query: str, results: list) -> str:
+def generate_response_for_name(name: str, results: dict) -> str:
+    """Genera risposta per ricerca per nome."""
+    
+    if results['totale'] == 0:
+        return f"Non ho trovato pubblicazioni relative a {name} nel catalogo."
+    
+    # Costruisci contesto per Claude
+    context_parts = []
+    
+    if results['monografie_titolo']:
+        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie_titolo'][:5]]
+        context_parts.append(f"MONOGRAFIE DEDICATE ({len(results['monografie_titolo'])}):\n" + "\n".join(titles))
+    
+    if results['monografie']:
+        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie'][:5]]
+        context_parts.append(f"ALTRE MONOGRAFIE ({len(results['monografie'])}):\n" + "\n".join(titles))
+    
+    if results['collettive']:
+        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['collettive'][:5]]
+        context_parts.append(f"CATALOGHI COLLETTIVI ({len(results['collettive'])}):\n" + "\n".join(titles))
+    
+    if results['come_autore']:
+        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['come_autore'][:3]]
+        context_parts.append(f"COME AUTORE/CURATORE ({len(results['come_autore'])}):\n" + "\n".join(titles))
+    
+    if results['citazioni']:
+        context_parts.append(f"CITAZIONI IN ALTRI VOLUMI: {len(results['citazioni'])}")
+    
+    context = "\n\n".join(context_parts)
+    
+    message = claude.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=600,
+        messages=[{
+            "role": "user",
+            "content": f"""Sei un archivista specializzato. L'utente cerca pubblicazioni su: {name}
+
+RISULTATI DAL CATALOGO:
+{context}
+
+TOTALE: {results['totale']} pubblicazioni trovate
+
+Scrivi una risposta strutturata in 3-4 paragrafi separati da righe vuote.
+
+Primo paragrafo: sintesi numerica (quante monografie, collettive, ecc.)
+
+Secondo paragrafo: evidenzia le monografie più significative con titolo, editore e anno.
+
+Terzo paragrafo: menzione dei cataloghi collettivi più rilevanti.
+
+Se ci sono pubblicazioni come autore, menzionale brevemente.
+
+Tono: professionale, da archivio. Cita i titoli tra virgolette.
+Rispondi nella lingua dell'utente (italiana se la query era italiana)."""
+        }]
+    )
+    
+    return message.content[0].text
+
+def generate_response_semantic(query: str, results: list) -> str:
+    """Genera risposta per ricerca semantica."""
+    
     if not results:
-        return "Nessun risultato trovato con i criteri specificati."
+        return "Nessun risultato trovato per questa ricerca."
     
     books_context = "\n".join([
-        f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']}) [{r['lingua']}] - {r['descrizione'][:150] if r['descrizione'] else 'Nessuna descrizione'}..."
+        f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})"
         for r in results[:7]
     ])
     
@@ -60,19 +255,8 @@ L'utente cerca: "{query}"
 Risultati dal catalogo:
 {books_context}
 
-FORMATO RISPOSTA OBBLIGATORIO:
-Scrivi esattamente 3-4 paragrafi SEPARATI DA UNA RIGA VUOTA.
-Ogni paragrafo deve essere di 2-3 frasi.
-NON scrivere tutto attaccato.
-
-Esempio di formato corretto:
-"Prima frase del primo paragrafo. Seconda frase.
-
-Primo paragrafo del secondo blocco. Altra frase qui.
-
-Terzo paragrafo con conclusione."
-
-Tono: professionale, sobrio, da biblioteca di ricerca.
+Scrivi 3-4 paragrafi separati da righe vuote.
+Tono professionale, da biblioteca di ricerca.
 Cita i titoli tra virgolette.
 Rispondi nella lingua dell'utente."""
         }]
@@ -103,18 +287,53 @@ class handler(BaseHTTPRequestHandler):
         if not query:
             self.wfile.write(json.dumps({
                 "status": "ok",
-                "message": "Libro Search API. Usa ?q=query per cercare."
+                "message": "Libro Search API v2. Usa ?q=query per cercare."
             }).encode())
             return
         
         try:
-            results = search_books(query, limit)
-            risposta = generate_response(query, results)
+            # Estrai tipo di query
+            query_info = extract_name_from_query(query)
             
-            self.wfile.write(json.dumps({
-                "risposta": risposta,
-                "risultati": results
-            }, default=str).encode())
+            if query_info.get('tipo') == 'nome':
+                # Ricerca per nome
+                name = query_info['nome']
+                results = search_by_name(name, limit)
+                risposta = generate_response_for_name(name, results)
+                
+                # Combina tutti i risultati per la lista
+                all_results = (
+                    results['monografie_titolo'] + 
+                    results['monografie'] + 
+                    results['collettive'] + 
+                    results['come_autore'] + 
+                    results['citazioni'][:20]
+                )
+                
+                self.wfile.write(json.dumps({
+                    "tipo_ricerca": "nome",
+                    "nome_cercato": name,
+                    "risposta": risposta,
+                    "risultati": all_results,
+                    "conteggi": {
+                        "monografie": len(results['monografie_titolo']) + len(results['monografie']),
+                        "collettive": len(results['collettive']),
+                        "come_autore": len(results['come_autore']),
+                        "citazioni": len(results['citazioni']),
+                        "totale": results['totale']
+                    }
+                }, default=str).encode())
+            else:
+                # Ricerca semantica
+                results = search_semantic(query, limit)
+                risposta = generate_response_semantic(query, results)
+                
+                self.wfile.write(json.dumps({
+                    "tipo_ricerca": "semantica",
+                    "risposta": risposta,
+                    "risultati": results
+                }, default=str).encode())
+                
         except Exception as e:
             self.wfile.write(json.dumps({
                 "error": str(e)
@@ -132,7 +351,7 @@ class handler(BaseHTTPRequestHandler):
         try:
             data = json.loads(body)
             query = data.get('query', '')
-            limit = data.get('limit', 10)
+            limit = data.get('limit', 50)
             
             if not query:
                 self.wfile.write(json.dumps({
@@ -140,13 +359,45 @@ class handler(BaseHTTPRequestHandler):
                 }).encode())
                 return
             
-            results = search_books(query, limit)
-            risposta = generate_response(query, results)
+            # Estrai tipo di query
+            query_info = extract_name_from_query(query)
             
-            self.wfile.write(json.dumps({
-                "risposta": risposta,
-                "risultati": results
-            }, default=str).encode())
+            if query_info.get('tipo') == 'nome':
+                name = query_info['nome']
+                results = search_by_name(name, limit)
+                risposta = generate_response_for_name(name, results)
+                
+                all_results = (
+                    results['monografie_titolo'] + 
+                    results['monografie'] + 
+                    results['collettive'] + 
+                    results['come_autore'] + 
+                    results['citazioni'][:20]
+                )
+                
+                self.wfile.write(json.dumps({
+                    "tipo_ricerca": "nome",
+                    "nome_cercato": name,
+                    "risposta": risposta,
+                    "risultati": all_results,
+                    "conteggi": {
+                        "monografie": len(results['monografie_titolo']) + len(results['monografie']),
+                        "collettive": len(results['collettive']),
+                        "come_autore": len(results['come_autore']),
+                        "citazioni": len(results['citazioni']),
+                        "totale": results['totale']
+                    }
+                }, default=str).encode())
+            else:
+                results = search_semantic(query, limit)
+                risposta = generate_response_semantic(query, results)
+                
+                self.wfile.write(json.dumps({
+                    "tipo_ricerca": "semantica",
+                    "risposta": risposta,
+                    "risultati": results
+                }, default=str).encode())
+                
         except Exception as e:
             self.wfile.write(json.dumps({
                 "error": str(e)
