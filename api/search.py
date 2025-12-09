@@ -133,8 +133,9 @@ def generate_response_for_title(title: str, results: list) -> str:
     # Raccogli libri per post-processing
     all_books = results[:10]
     
+    # Prepara contesto con ID
     books_context = "\n".join([
-        f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']}) - Lingua: {r['lingua']}"
+        f"- ID:{r['id']} | \"{r['titolo']}\" ({r['editore']}, {r['anno']}) - Lingua: {r['lingua']}"
         for r in all_books
     ])
     
@@ -152,8 +153,8 @@ RISULTATI TROVATI ({len(results)} titoli):
 
 ISTRUZIONI:
 - Se c'è un match esatto o molto simile, conferma: "Sì, abbiamo [titolo]"
+- QUANDO CITI UN LIBRO, USA ESATTAMENTE QUESTO FORMATO: [[ID:xxx|Titolo del libro]]
 - Elenca i risultati trovati con editore, anno e lingua
-- I titoli tra virgolette saranno linkati automaticamente
 - Se ci sono più risultati, chiedi se l'utente cerca una edizione specifica
 - Risposte brevi e dirette"""
         }]
@@ -161,13 +162,14 @@ ISTRUZIONI:
     
     response_text = message.content[0].text
     
-    # Post-processing: sostituisci i titoli con link
-    for book in all_books:
-        titolo = book['titolo']
-        book_id = book['id']
-        link = f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{titolo}</a>'
-        response_text = response_text.replace(f'"{titolo}"', link)
-        response_text = response_text.replace(f'«{titolo}»', link)
+    # Post-processing: converti [[ID:xxx|Titolo]] in link HTML
+    import re
+    def replace_link(match):
+        book_id = match.group(1)
+        title = match.group(2)
+        return f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{title}</a>'
+    
+    response_text = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, response_text)
     
     return response_text
 
@@ -469,6 +471,12 @@ def generate_response_for_name(name: str, results: dict, filters: dict = None) -
     
     context = "\n\n".join(context_parts)
     
+    # Prepara lista libri con ID per il formato link
+    books_with_ids = "\n".join([
+        f"ID:{b['id']} | {b['titolo']}"
+        for b in all_books
+    ])
+    
     message = claude.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=400,
@@ -487,24 +495,30 @@ L'utente cerca: {name}
 DATI DAL CATALOGO:
 {context}
 
+LIBRI DISPONIBILI (usa questi ID per i link):
+{books_with_ids}
+
 ISTRUZIONI:
 1. Inizia con i numeri: totale titoli, suddivisione per tipo
-2. Cita 2-3 titoli significativi tra virgolette (saranno linkati automaticamente)
-3. Concludi offrendo un filtro o una domanda: "Filtro per periodo, lingua o tipo?"
-4. Risposte brevi, max 3-4 righe per paragrafo
-5. Rispondi nella lingua dell'utente"""
+2. QUANDO CITI UN LIBRO, USA ESATTAMENTE QUESTO FORMATO: [[ID:xxx|Titolo del libro]]
+   Esempio: [[ID:12345|Nome del Libro]]
+3. Cita 3-5 titoli significativi usando il formato [[ID:xxx|Titolo]]
+4. Concludi offrendo un filtro: "Filtro per periodo, lingua o tipo?"
+5. Risposte brevi, max 3-4 righe per paragrafo
+6. Rispondi nella lingua dell'utente"""
         }]
     )
     
     response_text = message.content[0].text
     
-    # Post-processing: sostituisci i titoli con link
-    for book in all_books:
-        titolo = book['titolo']
-        book_id = book['id']
-        link = f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{titolo}</a>'
-        response_text = response_text.replace(f'"{titolo}"', link)
-        response_text = response_text.replace(f'«{titolo}»', link)
+    # Post-processing: converti [[ID:xxx|Titolo]] in link HTML
+    import re
+    def replace_link(match):
+        book_id = match.group(1)
+        title = match.group(2)
+        return f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{title}</a>'
+    
+    response_text = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, response_text)
     
     return response_text
 
@@ -514,11 +528,12 @@ def generate_response_semantic(query: str, results: list) -> str:
     if not results:
         return "Non ho trovato risultati per questa ricerca. Prova con termini diversi o chiedimi un suggerimento su un tema specifico."
     
-    # Raccogli libri per post-processing
+    # Raccogli libri per post-processing - includi ID nel contesto
     all_books = results[:7]
     
+    # Prepara contesto CON ID per ogni libro
     books_context = "\n".join([
-        f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})"
+        f"- ID:{r['id']} | \"{r['titolo']}\" ({r['editore']}, {r['anno']})"
         for r in all_books
     ])
     
@@ -540,12 +555,13 @@ L'utente cerca: "{query}"
 RISULTATI TROVATI:
 {books_context}
 
-ISTRUZIONI:
+ISTRUZIONI CRITICHE:
 1. Questa è una ricerca esplorativa/tematica
 2. Presenta brevemente cosa hai trovato
-3. Cita 2-4 titoli tra virgolette (saranno linkati automaticamente)
-4. Suggerisci come affinare la ricerca o proponi direzioni correlate
-5. Se la query è vaga, fai una domanda per capire meglio
+3. QUANDO CITI UN LIBRO, USA ESATTAMENTE QUESTO FORMATO: [[ID:xxx|Titolo del libro]]
+   Esempio: [[ID:12345|Nome del Libro]]
+4. Cita 3-5 libri usando il formato [[ID:xxx|Titolo]]
+5. Suggerisci come affinare la ricerca o proponi direzioni correlate
 6. Risposte brevi, conversazionali
 7. Rispondi nella lingua dell'utente"""
         }]
@@ -553,13 +569,14 @@ ISTRUZIONI:
     
     response_text = message.content[0].text
     
-    # Post-processing: sostituisci i titoli con link
-    for book in all_books:
-        titolo = book['titolo']
-        book_id = book['id']
-        link = f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{titolo}</a>'
-        response_text = response_text.replace(f'"{titolo}"', link)
-        response_text = response_text.replace(f'«{titolo}»', link)
+    # Post-processing: converti [[ID:xxx|Titolo]] in link HTML
+    import re
+    def replace_link(match):
+        book_id = match.group(1)
+        title = match.group(2)
+        return f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{title}</a>'
+    
+    response_text = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, response_text)
     
     return response_text
 
