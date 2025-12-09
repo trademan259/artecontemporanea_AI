@@ -151,11 +151,13 @@ L'utente cerca il titolo: "{title}"
 RISULTATI TROVATI ({len(results)} titoli):
 {books_context}
 
+REGOLA FONDAMENTALE SUI LINK:
+OGNI VOLTA che menzioni un titolo di libro, DEVI usare questo formato: [[ID:xxx|Titolo]]
+NON esistono eccezioni. NON scrivere mai un titolo senza il formato [[ID:xxx|Titolo]].
+
 ISTRUZIONI:
-- Se c'è un match esatto o molto simile, conferma: "Sì, abbiamo [titolo]"
-- QUANDO CITI UN LIBRO, USA ESATTAMENTE QUESTO FORMATO: [[ID:xxx|Titolo del libro]]
-- Elenca i risultati trovati con editore, anno e lingua
-- Se ci sono più risultati, chiedi se l'utente cerca una edizione specifica
+- Se c'è un match, conferma: "Sì, abbiamo [[ID:xxx|Titolo]]"
+- Elenca i risultati SEMPRE nel formato [[ID:xxx|Titolo]] con editore, anno e lingua
 - Risposte brevi e dirette"""
         }]
     )
@@ -487,7 +489,6 @@ def generate_response_for_name(name: str, results: dict, filters: dict = None) -
 TONO:
 - Informativo, preciso, disponibile
 - Mai da venditore: niente aggettivi roboanti, niente enfasi promozionale
-- Mai "eccellente", "straordinario", "imperdibile", "maestro"
 - Dici i dati, offri opzioni, aiuti a trovare
 
 L'utente cerca: {name}
@@ -498,14 +499,17 @@ DATI DAL CATALOGO:
 LIBRI DISPONIBILI (usa questi ID per i link):
 {books_with_ids}
 
+REGOLA FONDAMENTALE SUI LINK:
+OGNI VOLTA che menzioni un titolo di libro, DEVI usare questo formato: [[ID:xxx|Titolo]]
+NON esistono eccezioni. Se citi un libro, DEVE avere il link.
+NON scrivere mai un titolo senza il formato [[ID:xxx|Titolo]].
+
 ISTRUZIONI:
 1. Inizia con i numeri: totale titoli, suddivisione per tipo
-2. QUANDO CITI UN LIBRO, USA ESATTAMENTE QUESTO FORMATO: [[ID:xxx|Titolo del libro]]
-   Esempio: [[ID:12345|Nome del Libro]]
-3. Cita 3-5 titoli significativi usando il formato [[ID:xxx|Titolo]]
-4. Concludi offrendo un filtro: "Filtro per periodo, lingua o tipo?"
-5. Risposte brevi, max 3-4 righe per paragrafo
-6. Rispondi nella lingua dell'utente"""
+2. Cita 3-5 titoli, SEMPRE nel formato [[ID:xxx|Titolo esatto come fornito]]
+3. Concludi con: "Filtro per periodo, lingua o tipo?"
+4. Risposte brevi
+5. Rispondi nella lingua dell'utente"""
         }]
     )
     
@@ -547,7 +551,6 @@ def generate_response_semantic(query: str, results: list) -> str:
 TONO:
 - Informativo, preciso, disponibile
 - Mai da venditore: niente aggettivi roboanti, niente enfasi promozionale
-- Mai "eccellente", "straordinario", "imperdibile", "maestro"
 - Colloquiale ma competente
 
 L'utente cerca: "{query}"
@@ -555,15 +558,17 @@ L'utente cerca: "{query}"
 RISULTATI TROVATI:
 {books_context}
 
-ISTRUZIONI CRITICHE:
-1. Questa è una ricerca esplorativa/tematica
-2. Presenta brevemente cosa hai trovato
-3. QUANDO CITI UN LIBRO, USA ESATTAMENTE QUESTO FORMATO: [[ID:xxx|Titolo del libro]]
-   Esempio: [[ID:12345|Nome del Libro]]
-4. Cita 3-5 libri usando il formato [[ID:xxx|Titolo]]
-5. Suggerisci come affinare la ricerca o proponi direzioni correlate
-6. Risposte brevi, conversazionali
-7. Rispondi nella lingua dell'utente"""
+REGOLA FONDAMENTALE SUI LINK:
+OGNI VOLTA che menzioni un titolo di libro, DEVI usare questo formato: [[ID:xxx|Titolo]]
+NON esistono eccezioni. Se citi un libro, DEVE avere il link.
+NON scrivere mai un titolo senza il formato [[ID:xxx|Titolo]].
+
+ISTRUZIONI:
+1. Presenta brevemente cosa hai trovato
+2. Cita 3-5 libri, SEMPRE nel formato [[ID:xxx|Titolo esatto come fornito]]
+3. Suggerisci come affinare la ricerca
+4. Risposte brevi, conversazionali
+5. Rispondi nella lingua dell'utente"""
         }]
     )
     
