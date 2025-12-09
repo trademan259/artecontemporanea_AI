@@ -269,6 +269,18 @@
             white-space: pre-wrap;
         }
 
+        .response-text a {
+            color: var(--ibm-blue-light);
+            text-decoration: none;
+            border-bottom: 1px solid var(--ibm-blue-light);
+            transition: color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .response-text a:hover {
+            color: #78a9ff;
+            border-color: #78a9ff;
+        }
+
         /* Results Header */
         .results-header {
             display: flex;
@@ -351,6 +363,16 @@
             color: var(--ibm-gray-10);
             margin-bottom: 0.25rem;
             line-height: 1.3;
+        }
+
+        .result-title a {
+            color: var(--ibm-gray-10);
+            text-decoration: none;
+            transition: color 0.15s ease;
+        }
+
+        .result-title a:hover {
+            color: var(--ibm-blue);
         }
 
         .result-meta {
@@ -668,19 +690,19 @@
         }
 
         function displayResults(data) {
-            responseText.textContent = data.risposta;
+            responseText.innerHTML = data.risposta;
             resultsCount.textContent = `${data.risultati.length} record`;
 
             resultsGrid.innerHTML = data.risultati.map(book => `
                 <article class="result-card">
                     <div class="result-image-container">
                         ${book.immagine 
-                            ? `<img src="${book.immagine}" alt="${book.titolo}" class="result-image" onerror="this.outerHTML='<span class=\\'result-image-placeholder\\'>No Image</span>'">`
+                            ? `<a href="https://test01-frontend.vercel.app/books/${book.id}" target="_blank"><img src="${book.immagine}" alt="${book.titolo}" class="result-image" onerror="this.outerHTML='<span class=\\'result-image-placeholder\\'>No Image</span>'"></a>`
                             : '<span class="result-image-placeholder">No Image</span>'
                         }
                     </div>
                     <div class="result-content">
-                        <h3 class="result-title">${book.titolo || 'Senza titolo'}</h3>
+                        <h3 class="result-title"><a href="https://test01-frontend.vercel.app/books/${book.id}" target="_blank">${book.titolo || 'Senza titolo'}</a></h3>
                         <div class="result-meta">
                             <span>${book.editore || '—'}</span>
                             <span>${book.anno || '—'}</span>
@@ -691,7 +713,7 @@
                     <div class="result-data">
                         <span class="result-price">${book.prezzo ? `€ ${book.prezzo}` : '—'}</span>
                         <span class="result-isbn">${book.isbn || ''}</span>
-                        <span class="result-similarity">${Math.round(book.similarity * 100)}%</span>
+                        <span class="result-similarity">${book.tipo || (book.similarity ? Math.round(book.similarity * 100) + '%' : '')}</span>
                     </div>
                 </article>
             `).join('');

@@ -50,22 +50,21 @@ def search_by_name(name: str, limit: int = 100) -> dict:
     conn = get_db()
     cur = conn.cursor()
     
-    # Prepara varianti del nome per la ricerca
-    name_lower = name.lower()
+    # Prepara entrambe le forme: "Nome Cognome" e "Cognome Nome"
+    name_lower = name.lower().strip()
     parts = name_lower.split()
     
-    # Crea pattern per entrambi gli ordini: "nome cognome" e "cognome nome"
     if len(parts) >= 2:
-        # Pattern per "Bruce Nauman" o "Nauman Bruce"
-        pattern1 = f"%{name_lower}%"  # nome cognome
-        pattern2 = f"%{parts[-1]}%{parts[0]}%"  # cognome ... nome
-        pattern3 = f"%{parts[-1]}%"  # solo cognome (più ampio)
+        # "Bruce Nauman" -> cerca anche "Nauman Bruce"
+        reversed_name = " ".join(reversed(parts))
+        pattern_original = f"%{name_lower}%"
+        pattern_reversed = f"%{reversed_name}%"
     else:
-        pattern1 = f"%{name_lower}%"
-        pattern2 = pattern1
-        pattern3 = pattern1
+        # Solo un nome/cognome
+        pattern_original = f"%{name_lower}%"
+        pattern_reversed = pattern_original
     
-    # 1. Monografie: libri dove è l'unico artista E nome nel titolo
+    # 1. Monografie: libri dove è l'unico artista E nome/cognome nel titolo
     cur.execute("""
         SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione, 
                b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
@@ -76,7 +75,7 @@ def search_by_name(name: str, limit: int = 100) -> dict:
           AND (LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s)
           AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) = 1
         ORDER BY b.anno DESC
-    """, (pattern1, pattern2, pattern1, pattern3))
+    """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed))
     monografie_titolo = cur.fetchall()
     
     # 2. Monografie: unico artista, nome non nel titolo
@@ -87,10 +86,10 @@ def search_by_name(name: str, limit: int = 100) -> dict:
         FROM public.books b
         JOIN public.book_artists ba ON b.id = ba.book_id
         WHERE (LOWER(ba.artist) LIKE %s OR LOWER(ba.artist) LIKE %s)
-          AND LOWER(b.titolo) NOT LIKE %s
+          AND LOWER(b.titolo) NOT LIKE %s AND LOWER(b.titolo) NOT LIKE %s
           AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) = 1
         ORDER BY b.anno DESC
-    """, (pattern1, pattern2, pattern3))
+    """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed))
     monografie = cur.fetchall()
     
     # 3. Collettive: più artisti
@@ -103,7 +102,7 @@ def search_by_name(name: str, limit: int = 100) -> dict:
         WHERE (LOWER(ba.artist) LIKE %s OR LOWER(ba.artist) LIKE %s)
           AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) > 1
         ORDER BY b.anno DESC
-    """, (pattern1, pattern2))
+    """, (pattern_original, pattern_reversed))
     collettive = cur.fetchall()
     
     # 4. Come autore (testi critici, saggi)
@@ -115,34 +114,34 @@ def search_by_name(name: str, limit: int = 100) -> dict:
         JOIN public.book_authors bau ON b.id = bau.book_id
         WHERE (LOWER(bau.author) LIKE %s OR LOWER(bau.author) LIKE %s)
         ORDER BY b.anno DESC
-    """, (pattern1, pattern2))
+    """, (pattern_original, pattern_reversed))
     come_autore = cur.fetchall()
     
-    # 5. Citazioni in descrizione (non già trovati)
+    # 5. Altri libri che menzionano l'artista in descrizione/titolo (non già trovati)
     found_ids = [r[0] for r in monografie_titolo + monografie + collettive + come_autore]
     if found_ids:
         cur.execute("""
             SELECT b.id, b.titolo, b.editore, b.anno, b.descrizione,
                    b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
-                   5 as ranking, 'citazione' as tipo
+                   5 as ranking, 'menzione' as tipo
             FROM public.books b
-            WHERE (LOWER(b.descrizione) LIKE %s OR LOWER(b.descrizione) LIKE %s 
+            WHERE (LOWER(b.descrizione) LIKE %s OR LOWER(b.descrizione) LIKE %s
                    OR LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s)
               AND b.id NOT IN %s
             ORDER BY b.anno DESC
             LIMIT 50
-        """, (pattern1, pattern2, pattern1, pattern2, tuple(found_ids) if found_ids else (0,)))
+        """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed, tuple(found_ids)))
     else:
         cur.execute("""
             SELECT b.id, b.titolo, b.editore, b.anno, b.descrizione,
                    b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
-                   5 as ranking, 'citazione' as tipo
+                   5 as ranking, 'menzione' as tipo
             FROM public.books b
-            WHERE LOWER(b.descrizione) LIKE %s OR LOWER(b.descrizione) LIKE %s
-                  OR LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s
+            WHERE (LOWER(b.descrizione) LIKE %s OR LOWER(b.descrizione) LIKE %s
+                   OR LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s)
             ORDER BY b.anno DESC
             LIMIT 50
-        """, (pattern1, pattern2, pattern1, pattern2))
+        """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed))
     citazioni = cur.fetchall()
     
     cur.close()
@@ -194,54 +193,59 @@ def generate_response_for_name(name: str, results: dict) -> str:
     if results['totale'] == 0:
         return f"Non ho trovato pubblicazioni relative a {name} nel catalogo."
     
-    # Costruisci contesto per Claude
+    # Costruisci contesto per Claude CON gli ID per i link
     context_parts = []
     
     if results['monografie_titolo']:
-        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie_titolo'][:5]]
-        context_parts.append(f"MONOGRAFIE DEDICATE ({len(results['monografie_titolo'])}):\n" + "\n".join(titles))
+        titles = [f"- [{r['id']}] \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie_titolo'][:5]]
+        context_parts.append(f"MONOGRAFIE DEDICATE - titolo con nome artista ({len(results['monografie_titolo'])} titoli):\n" + "\n".join(titles))
     
     if results['monografie']:
-        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie'][:5]]
-        context_parts.append(f"ALTRE MONOGRAFIE ({len(results['monografie'])}):\n" + "\n".join(titles))
+        titles = [f"- [{r['id']}] \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie'][:5]]
+        context_parts.append(f"ALTRE MONOGRAFIE ({len(results['monografie'])} titoli):\n" + "\n".join(titles))
     
     if results['collettive']:
-        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['collettive'][:5]]
-        context_parts.append(f"CATALOGHI COLLETTIVI ({len(results['collettive'])}):\n" + "\n".join(titles))
+        titles = [f"- [{r['id']}] \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['collettive'][:5]]
+        context_parts.append(f"CATALOGHI COLLETTIVI con l'artista ({len(results['collettive'])} titoli):\n" + "\n".join(titles))
     
     if results['come_autore']:
-        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['come_autore'][:3]]
-        context_parts.append(f"COME AUTORE/CURATORE ({len(results['come_autore'])}):\n" + "\n".join(titles))
+        titles = [f"- [{r['id']}] \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['come_autore'][:3]]
+        context_parts.append(f"LIBRI SCRITTI DALL'ARTISTA ({len(results['come_autore'])} titoli):\n" + "\n".join(titles))
     
     if results['citazioni']:
-        context_parts.append(f"CITAZIONI IN ALTRI VOLUMI: {len(results['citazioni'])}")
+        context_parts.append(f"ALTRI LIBRI che menzionano l'artista: {len(results['citazioni'])} titoli")
     
     context = "\n\n".join(context_parts)
     
     message = claude.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=600,
+        max_tokens=800,
         messages=[{
             "role": "user",
-            "content": f"""Sei un archivista specializzato. L'utente cerca pubblicazioni su: {name}
+            "content": f"""Sei un libraio specializzato in arte contemporanea. L'utente cerca pubblicazioni su: {name}
 
-RISULTATI DAL CATALOGO:
+LIBRI DISPONIBILI NEL NOSTRO CATALOGO:
 {context}
 
-TOTALE: {results['totale']} pubblicazioni trovate
+TOTALE: {results['totale']} pubblicazioni in vendita
 
-Scrivi una risposta strutturata in 3-4 paragrafi separati da righe vuote.
+ISTRUZIONI IMPORTANTI PER I LINK:
+Ogni libro ha un ID tra parentesi quadre [ID]. Quando citi un titolo, DEVI formattarlo come link HTML:
+<a href="https://test01-frontend.vercel.app/books/ID" target="_blank">Titolo del libro</a>
 
-Primo paragrafo: sintesi numerica (quante monografie, collettive, ecc.)
+Esempio: se vedi [AM-1234] "Arte Moderna" devi scrivere:
+<a href="https://test01-frontend.vercel.app/books/AM-1234" target="_blank">Arte Moderna</a>
 
-Secondo paragrafo: evidenzia le monografie più significative con titolo, editore e anno.
+Scrivi una risposta in 3-4 paragrafi separati da righe vuote.
 
-Terzo paragrafo: menzione dei cataloghi collettivi più rilevanti.
+Primo paragrafo: sintesi dei titoli disponibili (quante monografie, cataloghi collettivi, ecc.)
 
-Se ci sono pubblicazioni come autore, menzionale brevemente.
+Secondo paragrafo: descrivi le monografie più significative disponibili, CON LINK ai titoli.
 
-Tono: professionale, da archivio. Cita i titoli tra virgolette.
-Rispondi nella lingua dell'utente (italiana se la query era italiana)."""
+Terzo paragrafo: menzione dei cataloghi collettivi più rilevanti, CON LINK ai titoli.
+
+Tono: professionale ma commerciale, stai presentando libri in vendita.
+Rispondi nella lingua dell'utente."""
         }]
     )
     
