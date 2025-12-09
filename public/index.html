@@ -758,9 +758,24 @@
             // Show typing
             addTypingIndicator();
             
-            // Prendi i risultati originali e manda a Claude per commentare
-            // in relazione al suggerimento cliccato
+            // Filtra i risultati client-side
             const originalResults = conversationContext.lastResults || [];
+            const suggestionLower = suggestion.toLowerCase();
+            
+            // Filtra per titolo, descrizione, editore
+            let filteredResults = originalResults.filter(book => {
+                const searchText = [
+                    book.titolo || '',
+                    book.descrizione || '',
+                    book.editore || ''
+                ].join(' ').toLowerCase();
+                return searchText.includes(suggestionLower);
+            });
+            
+            // Se il filtro è troppo restrittivo, usa tutti i risultati originali
+            // ma lascia che Claude li commenti in base al suggerimento
+            const booksToComment = filteredResults.length >= 3 ? filteredResults : originalResults;
+            const booksToShow = filteredResults.length >= 3 ? filteredResults : originalResults.slice(0, 15);
             
             try {
                 const response = await fetch(API_URL, {
@@ -769,16 +784,19 @@
                     body: JSON.stringify({
                         query: suggestion,
                         mode: 'comment',
-                        filteredBooks: originalResults.slice(0, 10),
+                        filteredBooks: booksToComment.slice(0, 10),
                         originalQuery: conversationContext.lastSearch
                     })
                 });
                 
                 const data = await response.json();
                 
+                // Aggiorna i risultati nel contesto
+                conversationContext.lastResults = booksToShow;
+                
                 removeTypingIndicator();
                 addMessage(data.risposta, false, {
-                    risultati: originalResults,
+                    risultati: booksToShow,
                     suggerimenti: data.suggerimenti || []
                 });
                 
