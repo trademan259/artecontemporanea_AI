@@ -551,47 +551,44 @@ def generate_response_semantic(query: str, results: list) -> dict:
             "role": "user",
             "content": f"""Sei un bibliotecario specializzato in libri d'arte, fotografia e illustrazione.
 
+TONO:
+- Informativo, preciso, disponibile
+- Mai da venditore: niente aggettivi roboanti
+- Colloquiale ma competente
+
 L'utente cerca: "{query}"
 
 RISULTATI TROVATI:
 {books_context}
 
-Rispondi in JSON con questo formato esatto:
-{{
-  "risposta": "Il tuo testo di risposta qui. Quando citi un libro usa [[ID:xxx|Titolo]]",
-  "suggerimenti": ["Suggerimento 1", "Suggerimento 2", "Suggerimento 3"]
-}}
+REGOLA FONDAMENTALE SUI LINK:
+OGNI VOLTA che menzioni un titolo di libro, DEVI usare questo formato: [[ID:xxx|Titolo]]
+NON esistono eccezioni. NON scrivere mai un titolo senza il formato [[ID:xxx|Titolo]].
 
-REGOLE:
-1. "risposta": testo breve e conversazionale, cita 2-4 libri nel formato [[ID:xxx|Titolo]]
-2. "suggerimenti": 3-5 parole/frasi brevi per affinare la ricerca (es. ["fotografia", "pittura", "anni 70", "artisti italiani"])
-   - I suggerimenti devono essere BREVI (1-3 parole max)
-   - Devono aiutare a restringere/specificare la ricerca
-   - Se la ricerca è già specifica, suggerimenti può essere vuoto []
-3. OGNI libro citato DEVE usare il formato [[ID:xxx|Titolo]]
-4. Rispondi SOLO con il JSON, nient'altro
-5. Rispondi nella lingua dell'utente"""
+ISTRUZIONI:
+1. Presenta brevemente cosa hai trovato
+2. Cita 3-5 libri, SEMPRE nel formato [[ID:xxx|Titolo esatto come fornito]]
+3. Se la ricerca è generica, FAI DOMANDE per capire meglio cosa cerca l'utente
+4. Suggerisci direzioni possibili (es. "Ti interessa un periodo specifico? Un paese? Un approccio particolare?")
+5. Risposte conversazionali, come un bibliotecario che aiuta
+6. Rispondi nella lingua dell'utente
+
+Alla fine della risposta, aggiungi una riga separata con:
+SUGGERIMENTI: parola1, parola2, parola3, parola4
+(3-5 parole/frasi brevi che potrebbero affinare la ricerca, es: "anni 70", "Italia", "fotografia", "grafica")"""
         }]
     )
     
     response_text = message.content[0].text.strip()
     
-    # Parse JSON response
-    try:
-        # Pulisci eventuali markdown
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-        response_text = response_text.strip()
-        
-        result = json.loads(response_text)
-        risposta = result.get("risposta", "")
-        suggerimenti = result.get("suggerimenti", [])
-    except:
-        # Fallback se JSON parsing fallisce
-        risposta = response_text
-        suggerimenti = []
+    # Estrai suggerimenti dalla risposta
+    suggerimenti = []
+    if "SUGGERIMENTI:" in response_text:
+        parts = response_text.split("SUGGERIMENTI:")
+        response_text = parts[0].strip()
+        if len(parts) > 1:
+            sugg_text = parts[1].strip()
+            suggerimenti = [s.strip() for s in sugg_text.split(",") if s.strip()]
     
     # Post-processing: converti [[ID:xxx|Titolo]] in link HTML
     import re
@@ -600,10 +597,10 @@ REGOLE:
         title = match.group(2)
         return f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{title}</a>'
     
-    risposta = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, risposta)
+    response_text = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, response_text)
     
     return {
-        "risposta": risposta,
+        "risposta": response_text,
         "suggerimenti": suggerimenti
     }
 
