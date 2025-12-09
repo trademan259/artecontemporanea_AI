@@ -93,6 +93,55 @@ JSON:"""
     except:
         return {"tipo": "tematica", "tema": query}
 
+def generate_comment_response(filter_term: str, books: list, original_query: str) -> str:
+    """Genera commenti brevi sui libri filtrati, senza ripetere lo schema iniziale."""
+    
+    if not books:
+        return f"Nessun risultato specifico per '{filter_term}'."
+    
+    # Prepara contesto con ID
+    books_context = "\n".join([
+        f"- ID:{b.get('id')} | \"{b.get('titolo')}\" ({b.get('editore', '')}, {b.get('anno', '')})"
+        for b in books[:8]
+    ])
+    
+    message = claude.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=400,
+        messages=[{
+            "role": "user",
+            "content": f"""L'utente stava cercando "{original_query}" e ha cliccato su "{filter_term}" per affinare.
+
+Ecco i {len(books)} libri filtrati:
+{books_context}
+
+ISTRUZIONI:
+1. NON ripetere "Ho trovato..." o "Ti segnalo..." - l'utente sa già cosa ha chiesto
+2. Vai dritto al punto: commenta brevemente 3-5 libri, uno per riga
+3. Per ogni libro: [[ID:xxx|Titolo]] - una frase secca su cosa lo rende interessante per "{filter_term}"
+4. Niente domande finali, niente "ti interessa...", niente schema ripetitivo
+5. Tono: schede rapide, come note di un bibliotecario
+
+Esempio di formato:
+[[ID:123|Titolo Uno]] - primo documento originale del movimento, raro
+[[ID:456|Titolo Due]] - ottima iconografia, 200 immagini
+[[ID:789|Titolo Tre]] - analisi accademica ma accessibile"""
+        }]
+    )
+    
+    response_text = message.content[0].text.strip()
+    
+    # Post-processing: converti [[ID:xxx|Titolo]] in link HTML
+    import re
+    def replace_link(match):
+        book_id = match.group(1)
+        title = match.group(2)
+        return f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{title}</a>'
+    
+    response_text = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, response_text)
+    
+    return response_text
+
 def search_by_title(title: str, limit: int = 20) -> list:
     """Cerca libri per titolo esatto o parziale."""
     
@@ -569,13 +618,17 @@ ISTRUZIONI:
 1. Presenta brevemente cosa hai trovato
 2. Cita 3-5 libri, SEMPRE nel formato [[ID:xxx|Titolo esatto come fornito]]
 3. Se la ricerca è generica, FAI DOMANDE per capire meglio cosa cerca l'utente
-4. Suggerisci direzioni possibili (es. "Ti interessa un periodo specifico? Un paese? Un approccio particolare?")
+4. Suggerisci direzioni possibili
 5. Risposte conversazionali, come un bibliotecario che aiuta
 6. Rispondi nella lingua dell'utente
 
-Alla fine della risposta, aggiungi una riga separata con:
-SUGGERIMENTI: parola1, parola2, parola3, parola4
-(3-5 parole/frasi brevi che potrebbero affinare la ricerca, es: "anni 70", "Italia", "fotografia", "grafica")"""
+OBBLIGATORIO - ULTIMA RIGA:
+Devi SEMPRE terminare la risposta con questa riga esatta (su una riga separata):
+SUGGERIMENTI: termine1, termine2, termine3, termine4
+
+Dove i termini sono 3-5 parole/frasi BREVI (1-3 parole) che affinano la ricerca.
+Esempi: "anni 70", "fotografia", "Italia", "poster", "riviste"
+Questa riga è OBBLIGATORIA, non dimenticarla mai."""
         }]
     )
     
@@ -708,12 +761,26 @@ class handler(BaseHTTPRequestHandler):
             data = json.loads(body)
             query = data.get('query', '')
             limit = data.get('limit', 50)
-            direct_filters = data.get('filters', None)  # Filtri diretti dai bottoni
+            direct_filters = data.get('filters', None)
+            mode = data.get('mode', None)
             
             if not query:
                 self.wfile.write(json.dumps({
                     "error": "Query richiesta"
                 }).encode())
+                return
+            
+            # Modalità commento: Claude commenta libri già filtrati
+            if mode == 'comment':
+                filtered_books = data.get('filteredBooks', [])
+                original_query = data.get('originalQuery', '')
+                risposta = generate_comment_response(query, filtered_books, original_query)
+                
+                self.wfile.write(json.dumps({
+                    "tipo_ricerca": "commento",
+                    "risposta": risposta,
+                    "risultati": filtered_books
+                }, default=str).encode())
                 return
             
             # Se ci sono filtri diretti, salta Claude e fai ricerca diretta per nome
