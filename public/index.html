@@ -752,39 +752,81 @@
         }
         
         async function applySuggestion(suggestion) {
-            // Combina la ricerca originale con il suggerimento
-            const originalQuery = conversationContext.lastSearch || '';
-            const newQuery = originalQuery + ' ' + suggestion;
+            // Filtra i risultati già trovati client-side
+            const originalResults = conversationContext.lastResults || [];
+            const suggestionLower = suggestion.toLowerCase();
+            
+            // Filtra per titolo, descrizione, editore
+            const filteredResults = originalResults.filter(book => {
+                const searchText = [
+                    book.titolo || '',
+                    book.descrizione || '',
+                    book.editore || ''
+                ].join(' ').toLowerCase();
+                return searchText.includes(suggestionLower);
+            });
             
             // Mostra messaggio utente
             addMessage(suggestion, true);
+            
+            // Se non ci sono risultati filtrati, fai una nuova ricerca
+            if (filteredResults.length === 0) {
+                addTypingIndicator();
+                try {
+                    const newQuery = conversationContext.lastSearch + ' ' + suggestion;
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ query: newQuery, limit: 50 })
+                    });
+                    const data = await response.json();
+                    conversationContext.lastSearch = newQuery;
+                    conversationContext.lastResults = data.risultati || [];
+                    removeTypingIndicator();
+                    addMessage(data.risposta, false, data);
+                } catch (error) {
+                    removeTypingIndicator();
+                    addMessage('Nessun risultato trovato per questo filtro.', false);
+                }
+                return;
+            }
+            
+            // Aggiorna risultati filtrati
+            conversationContext.lastResults = filteredResults;
             
             // Show typing
             addTypingIndicator();
             
             try {
+                // Chiedi a Claude di commentare i risultati filtrati
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        query: newQuery,
-                        limit: 50
+                        query: suggestion,
+                        mode: 'comment',  // Modalità commento
+                        filteredBooks: filteredResults.slice(0, 8),  // Max 8 libri
+                        originalQuery: conversationContext.lastSearch
                     })
                 });
                 
                 const data = await response.json();
                 
-                // Aggiorna contesto
-                conversationContext.lastSearch = newQuery;
-                conversationContext.lastResults = data.risultati || [];
-                conversationContext.lastFilters = {};
-                
                 removeTypingIndicator();
-                addMessage(data.risposta, false, data);
+                
+                // Mostra risposta con risultati filtrati
+                addMessage(data.risposta, false, {
+                    ...data,
+                    risultati: filteredResults,
+                    suggerimenti: []  // Niente nuovi suggerimenti per i filtri
+                });
                 
             } catch (error) {
                 removeTypingIndicator();
-                addMessage('Errore nella ricerca.', false);
+                addMessage(`${filteredResults.length} risultati per "${suggestion}".`, false, {
+                    risultati: filteredResults,
+                    suggerimenti: []
+                });
             }
         }
 
