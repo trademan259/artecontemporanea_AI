@@ -14,26 +14,33 @@ def get_db():
     return psycopg2.connect(os.environ.get("NEON_DATABASE_URL"))
 
 def extract_name_from_query(query: str) -> dict:
-    """Usa Claude per estrarre nomi di artisti/autori dalla query."""
+    """Usa Claude per estrarre nomi di artisti/autori e filtri dalla query."""
     
     response = claude.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=200,
+        max_tokens=300,
         messages=[{
             "role": "user",
             "content": f"""Analizza questa query di ricerca libri: "{query}"
 
-Se la query cerca libri DI o SU una persona specifica (artista, fotografo, autore, critico), estrai il nome.
+Estrai:
+1. Se cerca libri DI o SU una persona specifica (artista, fotografo, autore, critico)
+2. Eventuali filtri: lingua, anno, periodo
 
-Rispondi SOLO in JSON:
-- Se c'è un nome: {{"tipo": "nome", "nome": "Nome Cognome"}}
-- Se è una ricerca tematica: {{"tipo": "tematica", "tema": "descrizione breve"}}
+Rispondi SOLO in JSON con questi campi:
+- tipo: "nome" o "tematica"
+- nome: "Nome Cognome" (se tipo=nome)
+- tema: "descrizione" (se tipo=tematica)
+- lingua: "EN", "IT", "DE", "FR", "JP", etc. (se specificata)
+- anno_min: numero (se specificato)
+- anno_max: numero (se specificato)
 
 Esempi:
 "tutti i libri di Bruce Nauman" → {{"tipo": "nome", "nome": "Bruce Nauman"}}
-"fotografia giapponese anni 70" → {{"tipo": "tematica", "tema": "fotografia giapponese anni 70"}}
-"cataloghi di Luigi Ghirri" → {{"tipo": "nome", "nome": "Luigi Ghirri"}}
-"arte concettuale" → {{"tipo": "tematica", "tema": "arte concettuale"}}
+"Luigi Ghirri in inglese" → {{"tipo": "nome", "nome": "Luigi Ghirri", "lingua": "EN"}}
+"Cindy Sherman libri italiani" → {{"tipo": "nome", "nome": "Cindy Sherman", "lingua": "IT"}}
+"fotografia giapponese anni 70" → {{"tipo": "tematica", "tema": "fotografia giapponese", "anno_min": 1970, "anno_max": 1979}}
+"Gerhard Richter dopo il 2000" → {{"tipo": "nome", "nome": "Gerhard Richter", "anno_min": 2000}}
 
 JSON:"""
         }]
@@ -44,28 +51,44 @@ JSON:"""
     except:
         return {"tipo": "tematica", "tema": query}
 
-def search_by_name(name: str, limit: int = 100) -> dict:
-    """Cerca tutti i libri collegati a un nome, con ranking."""
+def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
+    """Cerca tutti i libri collegati a un nome, con ranking e filtri."""
     
     conn = get_db()
     cur = conn.cursor()
+    
+    filters = filters or {}
     
     # Prepara entrambe le forme: "Nome Cognome" e "Cognome Nome"
     name_lower = name.lower().strip()
     parts = name_lower.split()
     
     if len(parts) >= 2:
-        # "Bruce Nauman" -> cerca anche "Nauman Bruce"
         reversed_name = " ".join(reversed(parts))
         pattern_original = f"%{name_lower}%"
         pattern_reversed = f"%{reversed_name}%"
     else:
-        # Solo un nome/cognome
         pattern_original = f"%{name_lower}%"
         pattern_reversed = pattern_original
     
+    # Costruisci filtri aggiuntivi
+    extra_conditions = ""
+    extra_params = []
+    
+    if filters.get('lingua'):
+        extra_conditions += " AND LOWER(b.lingua) LIKE %s"
+        extra_params.append(f"%{filters['lingua'].lower()}%")
+    
+    if filters.get('anno_min'):
+        extra_conditions += " AND b.anno >= %s"
+        extra_params.append(str(filters['anno_min']))
+    
+    if filters.get('anno_max'):
+        extra_conditions += " AND b.anno <= %s"
+        extra_params.append(str(filters['anno_max']))
+    
     # 1. Monografie: libri dove è l'unico artista E nome/cognome nel titolo
-    cur.execute("""
+    cur.execute(f"""
         SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione, 
                b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
                1 as ranking, 'monografia_titolo' as tipo
@@ -74,12 +97,13 @@ def search_by_name(name: str, limit: int = 100) -> dict:
         WHERE (LOWER(ba.artist) LIKE %s OR LOWER(ba.artist) LIKE %s)
           AND (LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s)
           AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) = 1
+          {extra_conditions}
         ORDER BY b.anno DESC
-    """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed))
+    """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed) + tuple(extra_params))
     monografie_titolo = cur.fetchall()
     
     # 2. Monografie: unico artista, nome non nel titolo
-    cur.execute("""
+    cur.execute(f"""
         SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione,
                b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
                2 as ranking, 'monografia' as tipo
@@ -88,12 +112,13 @@ def search_by_name(name: str, limit: int = 100) -> dict:
         WHERE (LOWER(ba.artist) LIKE %s OR LOWER(ba.artist) LIKE %s)
           AND LOWER(b.titolo) NOT LIKE %s AND LOWER(b.titolo) NOT LIKE %s
           AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) = 1
+          {extra_conditions}
         ORDER BY b.anno DESC
-    """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed))
+    """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed) + tuple(extra_params))
     monografie = cur.fetchall()
     
     # 3. Collettive: più artisti
-    cur.execute("""
+    cur.execute(f"""
         SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione,
                b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
                3 as ranking, 'collettiva' as tipo
@@ -101,26 +126,28 @@ def search_by_name(name: str, limit: int = 100) -> dict:
         JOIN public.book_artists ba ON b.id = ba.book_id
         WHERE (LOWER(ba.artist) LIKE %s OR LOWER(ba.artist) LIKE %s)
           AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) > 1
+          {extra_conditions}
         ORDER BY b.anno DESC
-    """, (pattern_original, pattern_reversed))
+    """, (pattern_original, pattern_reversed) + tuple(extra_params))
     collettive = cur.fetchall()
     
     # 4. Come autore (testi critici, saggi)
-    cur.execute("""
+    cur.execute(f"""
         SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione,
                b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
                4 as ranking, 'autore' as tipo
         FROM public.books b
         JOIN public.book_authors bau ON b.id = bau.book_id
         WHERE (LOWER(bau.author) LIKE %s OR LOWER(bau.author) LIKE %s)
+          {extra_conditions}
         ORDER BY b.anno DESC
-    """, (pattern_original, pattern_reversed))
+    """, (pattern_original, pattern_reversed) + tuple(extra_params))
     come_autore = cur.fetchall()
     
     # 5. Altri libri che menzionano l'artista in descrizione/titolo (non già trovati)
     found_ids = [r[0] for r in monografie_titolo + monografie + collettive + come_autore]
     if found_ids:
-        cur.execute("""
+        cur.execute(f"""
             SELECT b.id, b.titolo, b.editore, b.anno, b.descrizione,
                    b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
                    5 as ranking, 'menzione' as tipo
@@ -128,20 +155,22 @@ def search_by_name(name: str, limit: int = 100) -> dict:
             WHERE (LOWER(b.descrizione) LIKE %s OR LOWER(b.descrizione) LIKE %s
                    OR LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s)
               AND b.id NOT IN %s
+              {extra_conditions}
             ORDER BY b.anno DESC
             LIMIT 50
-        """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed, tuple(found_ids)))
+        """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed, tuple(found_ids)) + tuple(extra_params))
     else:
-        cur.execute("""
+        cur.execute(f"""
             SELECT b.id, b.titolo, b.editore, b.anno, b.descrizione,
                    b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
                    5 as ranking, 'menzione' as tipo
             FROM public.books b
             WHERE (LOWER(b.descrizione) LIKE %s OR LOWER(b.descrizione) LIKE %s
                    OR LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s)
+              {extra_conditions}
             ORDER BY b.anno DESC
             LIMIT 50
-        """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed))
+        """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed) + tuple(extra_params))
     citazioni = cur.fetchall()
     
     cur.close()
@@ -187,14 +216,38 @@ def search_semantic(query: str, limit: int = 10) -> list:
     
     return results
 
-def generate_response_for_name(name: str, results: dict) -> str:
+def generate_response_for_name(name: str, results: dict, filters: dict = None) -> str:
     """Genera risposta per ricerca per nome."""
     
+    filters = filters or {}
+    
     if results['totale'] == 0:
-        return f"Non ho trovato pubblicazioni relative a {name} nel catalogo."
+        filter_msg = ""
+        if filters.get('lingua'):
+            filter_msg = f" in lingua {filters['lingua']}"
+        if filters.get('anno_min') or filters.get('anno_max'):
+            if filters.get('anno_min') and filters.get('anno_max'):
+                filter_msg += f" dal {filters['anno_min']} al {filters['anno_max']}"
+            elif filters.get('anno_min'):
+                filter_msg += f" dal {filters['anno_min']}"
+            elif filters.get('anno_max'):
+                filter_msg += f" fino al {filters['anno_max']}"
+        return f"Non ho trovato pubblicazioni relative a {name}{filter_msg} nel catalogo."
     
     # Costruisci contesto per Claude
     context_parts = []
+    
+    # Aggiungi info sui filtri applicati
+    filter_info = []
+    if filters.get('lingua'):
+        filter_info.append(f"lingua: {filters['lingua']}")
+    if filters.get('anno_min'):
+        filter_info.append(f"dal {filters['anno_min']}")
+    if filters.get('anno_max'):
+        filter_info.append(f"fino al {filters['anno_max']}")
+    
+    if filter_info:
+        context_parts.append(f"FILTRI APPLICATI: {', '.join(filter_info)}")
     
     # Raccogli tutti i libri con ID per il post-processing
     all_books = []
@@ -326,10 +379,11 @@ class handler(BaseHTTPRequestHandler):
             query_info = extract_name_from_query(query)
             
             if query_info.get('tipo') == 'nome':
-                # Ricerca per nome
+                # Ricerca per nome con filtri
                 name = query_info['nome']
-                results = search_by_name(name, limit)
-                risposta = generate_response_for_name(name, results)
+                filters = {k: v for k, v in query_info.items() if k in ['lingua', 'anno_min', 'anno_max']}
+                results = search_by_name(name, filters, limit)
+                risposta = generate_response_for_name(name, results, filters)
                 
                 # Combina tutti i risultati per la lista
                 all_results = (
@@ -394,8 +448,9 @@ class handler(BaseHTTPRequestHandler):
             
             if query_info.get('tipo') == 'nome':
                 name = query_info['nome']
-                results = search_by_name(name, limit)
-                risposta = generate_response_for_name(name, results)
+                filters = {k: v for k, v in query_info.items() if k in ['lingua', 'anno_min', 'anno_max']}
+                results = search_by_name(name, filters, limit)
+                risposta = generate_response_for_name(name, results, filters)
                 
                 all_results = (
                     results['monografie_titolo'] + 
