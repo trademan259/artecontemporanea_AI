@@ -193,24 +193,31 @@ def generate_response_for_name(name: str, results: dict) -> str:
     if results['totale'] == 0:
         return f"Non ho trovato pubblicazioni relative a {name} nel catalogo."
     
-    # Costruisci contesto per Claude CON gli ID per i link
+    # Costruisci contesto per Claude
     context_parts = []
     
+    # Raccogli tutti i libri con ID per il post-processing
+    all_books = []
+    
     if results['monografie_titolo']:
-        titles = [f"- [{r['id']}] \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie_titolo'][:5]]
+        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie_titolo'][:5]]
         context_parts.append(f"MONOGRAFIE DEDICATE - titolo con nome artista ({len(results['monografie_titolo'])} titoli):\n" + "\n".join(titles))
+        all_books.extend(results['monografie_titolo'][:5])
     
     if results['monografie']:
-        titles = [f"- [{r['id']}] \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie'][:5]]
+        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie'][:5]]
         context_parts.append(f"ALTRE MONOGRAFIE ({len(results['monografie'])} titoli):\n" + "\n".join(titles))
+        all_books.extend(results['monografie'][:5])
     
     if results['collettive']:
-        titles = [f"- [{r['id']}] \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['collettive'][:5]]
+        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['collettive'][:5]]
         context_parts.append(f"CATALOGHI COLLETTIVI con l'artista ({len(results['collettive'])} titoli):\n" + "\n".join(titles))
+        all_books.extend(results['collettive'][:5])
     
     if results['come_autore']:
-        titles = [f"- [{r['id']}] \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['come_autore'][:3]]
+        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['come_autore'][:3]]
         context_parts.append(f"LIBRI SCRITTI DALL'ARTISTA ({len(results['come_autore'])} titoli):\n" + "\n".join(titles))
+        all_books.extend(results['come_autore'][:3])
     
     if results['citazioni']:
         context_parts.append(f"ALTRI LIBRI che menzionano l'artista: {len(results['citazioni'])} titoli")
@@ -229,27 +236,32 @@ LIBRI DISPONIBILI NEL NOSTRO CATALOGO:
 
 TOTALE: {results['totale']} pubblicazioni in vendita
 
-ISTRUZIONI IMPORTANTI PER I LINK:
-Ogni libro ha un ID tra parentesi quadre [ID]. Quando citi un titolo, DEVI formattarlo come link HTML:
-<a href="https://test01-frontend.vercel.app/books/ID" target="_blank">Titolo del libro</a>
-
-Esempio: se vedi [AM-1234] "Arte Moderna" devi scrivere:
-<a href="https://test01-frontend.vercel.app/books/AM-1234" target="_blank">Arte Moderna</a>
-
 Scrivi una risposta in 3-4 paragrafi separati da righe vuote.
 
 Primo paragrafo: sintesi dei titoli disponibili (quante monografie, cataloghi collettivi, ecc.)
 
-Secondo paragrafo: descrivi le monografie più significative disponibili, CON LINK ai titoli.
+Secondo paragrafo: descrivi le monografie più significative disponibili, con titolo tra virgolette, editore e anno.
 
-Terzo paragrafo: menzione dei cataloghi collettivi più rilevanti, CON LINK ai titoli.
+Terzo paragrafo: menzione dei cataloghi collettivi più rilevanti, con titolo tra virgolette.
 
 Tono: professionale ma commerciale, stai presentando libri in vendita.
 Rispondi nella lingua dell'utente."""
         }]
     )
     
-    return message.content[0].text
+    response_text = message.content[0].text
+    
+    # Post-processing: sostituisci i titoli con link
+    for book in all_books:
+        titolo = book['titolo']
+        book_id = book['id']
+        # Cerca il titolo tra virgolette e sostituiscilo con un link
+        link = f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{titolo}</a>'
+        # Sostituisci "Titolo" con il link
+        response_text = response_text.replace(f'"{titolo}"', link)
+        response_text = response_text.replace(f'«{titolo}»', link)
+    
+    return response_text
 
 def generate_response_semantic(query: str, results: list) -> str:
     """Genera risposta per ricerca semantica."""
