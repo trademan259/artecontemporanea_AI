@@ -669,6 +669,20 @@
                 
                 html += `</div>`;
             }
+            
+            // Add suggestion buttons for semantic search
+            if (data && data.suggerimenti && data.suggerimenti.length > 0) {
+                // Store suggestions globally for access by buttons
+                window.currentSuggestions = data.suggerimenti;
+                html += `<div class="filter-buttons">`;
+                html += `<div class="filter-buttons-label">Affina la ricerca:</div>`;
+                html += `<div class="filter-buttons-row">`;
+                data.suggerimenti.forEach((suggestion, index) => {
+                    html += `<button class="filter-btn suggestion-btn" data-suggestion-index="${index}">${suggestion}</button>`;
+                });
+                html += `</div>`;
+                html += `</div>`;
+            }
 
             // Add results preview if available
             const results = data ? data.risultati : null;
@@ -734,6 +748,43 @@
             } catch (error) {
                 removeTypingIndicator();
                 addMessage('Errore nell\'applicare il filtro.', false);
+            }
+        }
+        
+        async function applySuggestion(suggestion) {
+            // Combina la ricerca originale con il suggerimento
+            const originalQuery = conversationContext.lastSearch || '';
+            const newQuery = originalQuery + ' ' + suggestion;
+            
+            // Mostra messaggio utente
+            addMessage(suggestion, true);
+            
+            // Show typing
+            addTypingIndicator();
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        query: newQuery,
+                        limit: 50
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Aggiorna contesto
+                conversationContext.lastSearch = newQuery;
+                conversationContext.lastResults = data.risultati || [];
+                conversationContext.lastFilters = {};
+                
+                removeTypingIndicator();
+                addMessage(data.risposta, false, data);
+                
+            } catch (error) {
+                removeTypingIndicator();
+                addMessage('Errore nella ricerca.', false);
             }
         }
 
@@ -863,6 +914,16 @@
         resultsModal.addEventListener('click', (e) => {
             if (e.target === resultsModal) {
                 resultsModal.classList.remove('visible');
+            }
+        });
+        
+        // Event delegation for suggestion buttons
+        chatContainer.addEventListener('click', (e) => {
+            if (e.target.classList.contains('suggestion-btn')) {
+                const index = e.target.dataset.suggestionIndex;
+                if (window.currentSuggestions && window.currentSuggestions[index]) {
+                    applySuggestion(window.currentSuggestions[index]);
+                }
             }
         });
     </script>
