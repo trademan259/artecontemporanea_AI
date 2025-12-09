@@ -50,8 +50,20 @@ def search_by_name(name: str, limit: int = 100) -> dict:
     conn = get_db()
     cur = conn.cursor()
     
+    # Prepara varianti del nome per la ricerca
     name_lower = name.lower()
-    name_pattern = f"%{name_lower}%"
+    parts = name_lower.split()
+    
+    # Crea pattern per entrambi gli ordini: "nome cognome" e "cognome nome"
+    if len(parts) >= 2:
+        # Pattern per "Bruce Nauman" o "Nauman Bruce"
+        pattern1 = f"%{name_lower}%"  # nome cognome
+        pattern2 = f"%{parts[-1]}%{parts[0]}%"  # cognome ... nome
+        pattern3 = f"%{parts[-1]}%"  # solo cognome (più ampio)
+    else:
+        pattern1 = f"%{name_lower}%"
+        pattern2 = pattern1
+        pattern3 = pattern1
     
     # 1. Monografie: libri dove è l'unico artista E nome nel titolo
     cur.execute("""
@@ -60,11 +72,11 @@ def search_by_name(name: str, limit: int = 100) -> dict:
                1 as ranking, 'monografia_titolo' as tipo
         FROM public.books b
         JOIN public.book_artists ba ON b.id = ba.book_id
-        WHERE LOWER(ba.artist) LIKE %s
-          AND LOWER(b.titolo) LIKE %s
+        WHERE (LOWER(ba.artist) LIKE %s OR LOWER(ba.artist) LIKE %s)
+          AND (LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s)
           AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) = 1
         ORDER BY b.anno DESC
-    """, (name_pattern, name_pattern))
+    """, (pattern1, pattern2, pattern1, pattern3))
     monografie_titolo = cur.fetchall()
     
     # 2. Monografie: unico artista, nome non nel titolo
@@ -74,11 +86,11 @@ def search_by_name(name: str, limit: int = 100) -> dict:
                2 as ranking, 'monografia' as tipo
         FROM public.books b
         JOIN public.book_artists ba ON b.id = ba.book_id
-        WHERE LOWER(ba.artist) LIKE %s
+        WHERE (LOWER(ba.artist) LIKE %s OR LOWER(ba.artist) LIKE %s)
           AND LOWER(b.titolo) NOT LIKE %s
           AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) = 1
         ORDER BY b.anno DESC
-    """, (name_pattern, name_pattern))
+    """, (pattern1, pattern2, pattern3))
     monografie = cur.fetchall()
     
     # 3. Collettive: più artisti
@@ -88,10 +100,10 @@ def search_by_name(name: str, limit: int = 100) -> dict:
                3 as ranking, 'collettiva' as tipo
         FROM public.books b
         JOIN public.book_artists ba ON b.id = ba.book_id
-        WHERE LOWER(ba.artist) LIKE %s
+        WHERE (LOWER(ba.artist) LIKE %s OR LOWER(ba.artist) LIKE %s)
           AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) > 1
         ORDER BY b.anno DESC
-    """, (name_pattern,))
+    """, (pattern1, pattern2))
     collettive = cur.fetchall()
     
     # 4. Come autore (testi critici, saggi)
@@ -101,9 +113,9 @@ def search_by_name(name: str, limit: int = 100) -> dict:
                4 as ranking, 'autore' as tipo
         FROM public.books b
         JOIN public.book_authors bau ON b.id = bau.book_id
-        WHERE LOWER(bau.author) LIKE %s
+        WHERE (LOWER(bau.author) LIKE %s OR LOWER(bau.author) LIKE %s)
         ORDER BY b.anno DESC
-    """, (name_pattern,))
+    """, (pattern1, pattern2))
     come_autore = cur.fetchall()
     
     # 5. Citazioni in descrizione (non già trovati)
@@ -114,21 +126,23 @@ def search_by_name(name: str, limit: int = 100) -> dict:
                    b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
                    5 as ranking, 'citazione' as tipo
             FROM public.books b
-            WHERE (LOWER(b.descrizione) LIKE %s OR LOWER(b.titolo) LIKE %s)
+            WHERE (LOWER(b.descrizione) LIKE %s OR LOWER(b.descrizione) LIKE %s 
+                   OR LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s)
               AND b.id NOT IN %s
             ORDER BY b.anno DESC
             LIMIT 50
-        """, (name_pattern, name_pattern, tuple(found_ids) if found_ids else (0,)))
+        """, (pattern1, pattern2, pattern1, pattern2, tuple(found_ids) if found_ids else (0,)))
     else:
         cur.execute("""
             SELECT b.id, b.titolo, b.editore, b.anno, b.descrizione,
                    b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
                    5 as ranking, 'citazione' as tipo
             FROM public.books b
-            WHERE LOWER(b.descrizione) LIKE %s OR LOWER(b.titolo) LIKE %s
+            WHERE LOWER(b.descrizione) LIKE %s OR LOWER(b.descrizione) LIKE %s
+                  OR LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s
             ORDER BY b.anno DESC
             LIMIT 50
-        """, (name_pattern, name_pattern))
+        """, (pattern1, pattern2, pattern1, pattern2))
     citazioni = cur.fetchall()
     
     cur.close()
