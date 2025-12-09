@@ -678,7 +678,27 @@ class handler(BaseHTTPRequestHandler):
             if direct_filters:
                 name = query  # query è il nome dell'artista
                 results = search_by_name(name, direct_filters, limit)
-                risposta = generate_response_for_name(name, results, direct_filters)
+                
+                # Genera risposta semplice SENZA Claude
+                totale = results['totale']
+                filter_desc = []
+                if direct_filters.get('lingua'):
+                    lang_names = {'IT': 'in italiano', 'EN': 'in inglese', 'DE': 'in tedesco', 'FR': 'in francese', 'ES': 'in spagnolo'}
+                    filter_desc.append(lang_names.get(direct_filters['lingua'], f"in {direct_filters['lingua']}"))
+                if direct_filters.get('tipo_pub'):
+                    tipo_names = {'monografia': 'monografie', 'collettiva': 'cataloghi collettivi', 'autore': 'scritti come autore'}
+                    filter_desc.append(tipo_names.get(direct_filters['tipo_pub'], direct_filters['tipo_pub']))
+                if direct_filters.get('anno_min'):
+                    filter_desc.append(f"dal {direct_filters['anno_min']}")
+                if direct_filters.get('anno_max'):
+                    filter_desc.append(f"fino al {direct_filters['anno_max']}")
+                
+                filter_text = ', '.join(filter_desc) if filter_desc else ''
+                
+                if totale == 0:
+                    risposta = f"Nessun risultato per {name} {filter_text}. Prova a rimuovere qualche filtro."
+                else:
+                    risposta = f"{totale} risultati per {name} {filter_text}."
                 
                 all_results = (
                     results['monografie_titolo'] + 
