@@ -240,7 +240,7 @@ def generate_response_for_name(name: str, results: dict, filters: dict = None) -
                 filter_msg += f" dal {filters['anno_min']}"
             elif filters.get('anno_max'):
                 filter_msg += f" fino al {filters['anno_max']}"
-        return f"Non ho trovato pubblicazioni relative a {name}{filter_msg} nel catalogo."
+        return f"Non ho trovato pubblicazioni su {name}{filter_msg}. Vuoi provare senza filtri o cercare un nome simile?"
     
     # Costruisci contesto per Claude
     context_parts = []
@@ -257,56 +257,68 @@ def generate_response_for_name(name: str, results: dict, filters: dict = None) -
     if filter_info:
         context_parts.append(f"FILTRI APPLICATI: {', '.join(filter_info)}")
     
+    # Conteggi
+    n_mono = len(results['monografie_titolo']) + len(results['monografie'])
+    n_coll = len(results['collettive'])
+    n_autore = len(results['come_autore'])
+    n_citazioni = len(results['citazioni'])
+    
+    context_parts.append(f"""CONTEGGI:
+- Monografie: {n_mono}
+- Cataloghi collettivi: {n_coll}
+- Scritti dell'artista: {n_autore}
+- Menzioni in altri volumi: {n_citazioni}
+- Totale: {results['totale']}""")
+    
     # Raccogli tutti i libri con ID per il post-processing
     all_books = []
     
     if results['monografie_titolo']:
-        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie_titolo'][:5]]
-        context_parts.append(f"MONOGRAFIE DEDICATE - titolo con nome artista ({len(results['monografie_titolo'])} titoli):\n" + "\n".join(titles))
-        all_books.extend(results['monografie_titolo'][:5])
+        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie_titolo'][:4]]
+        context_parts.append(f"MONOGRAFIE PRINCIPALI:\n" + "\n".join(titles))
+        all_books.extend(results['monografie_titolo'][:4])
     
     if results['monografie']:
-        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie'][:5]]
-        context_parts.append(f"ALTRE MONOGRAFIE ({len(results['monografie'])} titoli):\n" + "\n".join(titles))
-        all_books.extend(results['monografie'][:5])
+        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['monografie'][:3]]
+        context_parts.append(f"ALTRE MONOGRAFIE:\n" + "\n".join(titles))
+        all_books.extend(results['monografie'][:3])
     
     if results['collettive']:
-        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['collettive'][:5]]
-        context_parts.append(f"CATALOGHI COLLETTIVI con l'artista ({len(results['collettive'])} titoli):\n" + "\n".join(titles))
-        all_books.extend(results['collettive'][:5])
+        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['collettive'][:3]]
+        context_parts.append(f"CATALOGHI COLLETTIVI:\n" + "\n".join(titles))
+        all_books.extend(results['collettive'][:3])
     
     if results['come_autore']:
-        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['come_autore'][:3]]
-        context_parts.append(f"LIBRI SCRITTI DALL'ARTISTA ({len(results['come_autore'])} titoli):\n" + "\n".join(titles))
-        all_books.extend(results['come_autore'][:3])
-    
-    if results['citazioni']:
-        context_parts.append(f"ALTRI LIBRI che menzionano l'artista: {len(results['citazioni'])} titoli")
+        titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['come_autore'][:2]]
+        context_parts.append(f"SCRITTI DALL'ARTISTA:\n" + "\n".join(titles))
+        all_books.extend(results['come_autore'][:2])
     
     context = "\n\n".join(context_parts)
     
     message = claude.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=800,
+        max_tokens=400,
         messages=[{
             "role": "user",
-            "content": f"""Sei un libraio specializzato in arte contemporanea. L'utente cerca pubblicazioni su: {name}
+            "content": f"""Sei un bibliotecario specializzato in libri d'arte, fotografia e illustrazione.
 
-LIBRI DISPONIBILI NEL NOSTRO CATALOGO:
+TONO:
+- Informativo, preciso, disponibile
+- Mai da venditore: niente aggettivi roboanti, niente enfasi promozionale
+- Mai "eccellente", "straordinario", "imperdibile", "maestro"
+- Dici i dati, offri opzioni, aiuti a trovare
+
+L'utente cerca: {name}
+
+DATI DAL CATALOGO:
 {context}
 
-TOTALE: {results['totale']} pubblicazioni in vendita
-
-Scrivi una risposta in 3-4 paragrafi separati da righe vuote.
-
-Primo paragrafo: sintesi dei titoli disponibili (quante monografie, cataloghi collettivi, ecc.)
-
-Secondo paragrafo: descrivi le monografie più significative disponibili, con titolo tra virgolette, editore e anno.
-
-Terzo paragrafo: menzione dei cataloghi collettivi più rilevanti, con titolo tra virgolette.
-
-Tono: professionale ma commerciale, stai presentando libri in vendita.
-Rispondi nella lingua dell'utente."""
+ISTRUZIONI:
+1. Inizia con i numeri: totale titoli, suddivisione per tipo
+2. Cita 2-3 titoli significativi tra virgolette (saranno linkati automaticamente)
+3. Concludi offrendo un filtro o una domanda: "Filtro per periodo, lingua o tipo?"
+4. Risposte brevi, max 3-4 righe per paragrafo
+5. Rispondi nella lingua dell'utente"""
         }]
     )
     
@@ -323,10 +335,10 @@ Rispondi nella lingua dell'utente."""
     return response_text
 
 def generate_response_semantic(query: str, results: list) -> str:
-    """Genera risposta per ricerca semantica."""
+    """Genera risposta per ricerca semantica (esplorativa)."""
     
     if not results:
-        return "Nessun risultato trovato per questa ricerca."
+        return "Non ho trovato risultati per questa ricerca. Prova con termini diversi o chiedimi un suggerimento su un tema specifico."
     
     # Raccogli libri per post-processing
     all_books = results[:7]
@@ -338,19 +350,30 @@ def generate_response_semantic(query: str, results: list) -> str:
     
     message = claude.messages.create(
         model="claude-sonnet-4-20250514",
-        max_tokens=500,
+        max_tokens=400,
         messages=[{
             "role": "user",
-            "content": f"""Sei un archivista specializzato in libri d'arte, fotografia e pubblicazioni rare.
+            "content": f"""Sei un bibliotecario specializzato in libri d'arte, fotografia e illustrazione.
+
+TONO:
+- Informativo, preciso, disponibile
+- Mai da venditore: niente aggettivi roboanti, niente enfasi promozionale
+- Mai "eccellente", "straordinario", "imperdibile", "maestro"
+- Colloquiale ma competente
+
 L'utente cerca: "{query}"
 
-Risultati dal catalogo:
+RISULTATI TROVATI:
 {books_context}
 
-Scrivi 3-4 paragrafi separati da righe vuote.
-Tono professionale, da biblioteca di ricerca.
-Cita i titoli tra virgolette.
-Rispondi nella lingua dell'utente."""
+ISTRUZIONI:
+1. Questa è una ricerca esplorativa/tematica
+2. Presenta brevemente cosa hai trovato
+3. Cita 2-4 titoli tra virgolette (saranno linkati automaticamente)
+4. Suggerisci come affinare la ricerca o proponi direzioni correlate
+5. Se la query è vaga, fai una domanda per capire meglio
+6. Risposte brevi, conversazionali
+7. Rispondi nella lingua dell'utente"""
         }]
     )
     
