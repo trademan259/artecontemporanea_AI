@@ -758,47 +758,30 @@
             // Show typing
             addTypingIndicator();
             
-            // Filtra i risultati client-side
-            const originalResults = conversationContext.lastResults || [];
-            const suggestionLower = suggestion.toLowerCase();
-            
-            // Filtra per titolo, descrizione, editore
-            let filteredResults = originalResults.filter(book => {
-                const searchText = [
-                    book.titolo || '',
-                    book.descrizione || '',
-                    book.editore || ''
-                ].join(' ').toLowerCase();
-                return searchText.includes(suggestionLower);
-            });
-            
-            // Se il filtro è troppo restrittivo, usa tutti i risultati originali
-            // ma lascia che Claude li commenti in base al suggerimento
-            const booksToComment = filteredResults.length >= 3 ? filteredResults : originalResults;
-            const booksToShow = filteredResults.length >= 3 ? filteredResults : originalResults.slice(0, 15);
+            // Combina ricerca originale + suggerimento per nuova ricerca semantica
+            const combinedQuery = conversationContext.lastSearch + ' ' + suggestion;
             
             try {
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        query: suggestion,
-                        mode: 'comment',
-                        filteredBooks: booksToComment.slice(0, 10),
-                        originalQuery: conversationContext.lastSearch
+                        query: combinedQuery,
+                        mode: 'refined',
+                        originalQuery: conversationContext.lastSearch,
+                        refinement: suggestion,
+                        limit: 50
                     })
                 });
                 
                 const data = await response.json();
                 
-                // Aggiorna i risultati nel contesto
-                conversationContext.lastResults = booksToShow;
+                // Aggiorna contesto
+                conversationContext.lastSearch = combinedQuery;
+                conversationContext.lastResults = data.risultati || [];
                 
                 removeTypingIndicator();
-                addMessage(data.risposta, false, {
-                    risultati: booksToShow,
-                    suggerimenti: data.suggerimenti || []
-                });
+                addMessage(data.risposta, false, data);
                 
             } catch (error) {
                 removeTypingIndicator();
