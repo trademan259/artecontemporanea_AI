@@ -93,6 +93,55 @@ JSON:"""
     except:
         return {"tipo": "tematica", "tema": query}
 
+def generate_refined_response(refinement: str, results: list, original_query: str) -> str:
+    """Genera risposta breve per ricerca affinata, senza ripetere lo schema iniziale."""
+    
+    if not results:
+        return f"Nessun risultato per '{original_query}' + '{refinement}'."
+    
+    # Prepara contesto con ID
+    books_context = "\n".join([
+        f"- ID:{r.get('id')} | \"{r.get('titolo')}\" ({r.get('editore', '')}, {r.get('anno', '')})"
+        for r in results[:8]
+    ])
+    
+    message = claude.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=350,
+        messages=[{
+            "role": "user",
+            "content": f"""L'utente cercava "{original_query}" e ha affinato con "{refinement}".
+
+Ecco i {len(results)} risultati più pertinenti:
+{books_context}
+
+ISTRUZIONI RIGIDE:
+1. NON iniziare con "Ho trovato..." o simili - l'utente sa già cosa ha chiesto
+2. Vai dritto ai libri: commenta 4-6 titoli, uno per riga
+3. Formato: [[ID:xxx|Titolo]] - una frase secca (max 10 parole) su cosa lo rende rilevante per "{refinement}"
+4. Niente domande finali, niente "ti interessa...", niente convenevoli
+5. Se un libro non c'entra con "{refinement}", non citarlo
+
+Esempio di formato corretto:
+[[ID:123|Titolo Uno]] - reportage diretto dall'epoca
+[[ID:456|Titolo Due]] - 200 immagini originali
+[[ID:789|Titolo Tre]] - analisi del movimento"""
+        }]
+    )
+    
+    response_text = message.content[0].text.strip()
+    
+    # Post-processing: converti [[ID:xxx|Titolo]] in link HTML
+    import re
+    def replace_link(match):
+        book_id = match.group(1)
+        title = match.group(2)
+        return f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{title}</a>'
+    
+    response_text = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, response_text)
+    
+    return response_text
+
 def generate_comment_response(filter_term: str, books: list, original_query: str) -> str:
     """Genera commenti brevi sui libri filtrati, senza ripetere lo schema iniziale."""
     
@@ -780,6 +829,25 @@ class handler(BaseHTTPRequestHandler):
                     "tipo_ricerca": "commento",
                     "risposta": risposta,
                     "risultati": filtered_books
+                }, default=str).encode())
+                return
+            
+            # Modalità affinata: nuova ricerca semantica con risposta breve
+            if mode == 'refined':
+                original_query = data.get('originalQuery', '')
+                refinement = data.get('refinement', '')
+                
+                # Fai ricerca semantica con query combinata
+                results = search_semantic(query, limit)
+                
+                # Genera risposta in stile commento (breve, senza schema ripetitivo)
+                risposta = generate_refined_response(refinement, results, original_query)
+                
+                self.wfile.write(json.dumps({
+                    "tipo_ricerca": "affinata",
+                    "risposta": risposta,
+                    "risultati": results,
+                    "suggerimenti": []  # Niente nuovi suggerimenti dopo affinamento
                 }, default=str).encode())
                 return
             
