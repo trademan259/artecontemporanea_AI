@@ -832,6 +832,94 @@
             const query = chatInput.value.trim();
             if (!query) return;
 
+            // Controlla se è un filtro temporale sui risultati esistenti
+            const yearFilterMatch = query.match(/(?:prima|before|fino|until|entro)\s+(?:del|al|il)?\s*(\d{4})/i) ||
+                                   query.match(/(?:dopo|after|dal|from|since)\s+(?:del|il)?\s*(\d{4})/i) ||
+                                   query.match(/(?:anno|year)\s*(\d{4})/i) ||
+                                   query.match(/(\d{4})\s*[-–]\s*(\d{4})/);
+            
+            // Controlla se è un filtro per decennio
+            const decadeMatch = query.match(/(?:anni|years?)\s*['']?(\d{2})(?:s)?/i) ||  // "anni 60", "anni '70", "years 80s"
+                               query.match(/(\d{2})['']?s/i) ||  // "60s", "70's"
+                               query.match(/(?:anni|years?)\s+(\d{4})/i);  // "anni 1960"
+            
+            if ((yearFilterMatch || decadeMatch) && conversationContext.lastResults && conversationContext.lastResults.length > 0) {
+                let filteredResults;
+                let filterDesc;
+                
+                if (decadeMatch) {
+                    // Gestione decenni
+                    let decadeNum = decadeMatch[1];
+                    // Converti "60" in 1960, "1960" resta 1960
+                    if (decadeNum.length === 2) {
+                        decadeNum = (parseInt(decadeNum) < 30 ? 2000 : 1900) + parseInt(decadeNum);
+                    } else {
+                        decadeNum = parseInt(decadeNum);
+                    }
+                    const decadeStart = Math.floor(decadeNum / 10) * 10;
+                    const decadeEnd = decadeStart + 9;
+                    
+                    filteredResults = conversationContext.lastResults.filter(book => {
+                        const bookYear = parseInt(book.anno);
+                        return bookYear >= decadeStart && bookYear <= decadeEnd;
+                    });
+                    filterDesc = `degli anni ${decadeStart.toString().slice(-2)}`;
+                } else if (yearFilterMatch) {
+                    const isBefore = /prima|before|fino|until|entro/i.test(query);
+                    const isAfter = /dopo|after|dal|from|since/i.test(query);
+                    const isRange = query.match(/(\d{4})\s*[-–]\s*(\d{4})/);
+                    
+                    if (isRange) {
+                        const yearStart = parseInt(isRange[1]);
+                        const yearEnd = parseInt(isRange[2]);
+                        filteredResults = conversationContext.lastResults.filter(book => {
+                            const bookYear = parseInt(book.anno);
+                            return bookYear >= yearStart && bookYear <= yearEnd;
+                        });
+                        filterDesc = `tra il ${yearStart} e il ${yearEnd}`;
+                    } else {
+                        const year = parseInt(yearFilterMatch[1]);
+                        if (isBefore) {
+                            filteredResults = conversationContext.lastResults.filter(book => {
+                                const bookYear = parseInt(book.anno);
+                                return bookYear && bookYear < year;
+                            });
+                            filterDesc = `prima del ${year}`;
+                        } else if (isAfter) {
+                            filteredResults = conversationContext.lastResults.filter(book => {
+                                const bookYear = parseInt(book.anno);
+                                return bookYear && bookYear >= year;
+                            });
+                            filterDesc = `dal ${year} in poi`;
+                        } else {
+                            filteredResults = conversationContext.lastResults.filter(book => {
+                                return book.anno && book.anno.toString() === year.toString();
+                            });
+                            filterDesc = `del ${year}`;
+                        }
+                    }
+                }
+                
+                // Mostra messaggio utente
+                addMessage(query, true);
+                chatInput.value = '';
+                
+                // Aggiorna risultati
+                conversationContext.lastResults = filteredResults;
+                
+                // Genera risposta semplice
+                const risposta = filteredResults.length > 0 
+                    ? `${filteredResults.length} risultati ${filterDesc}.`
+                    : `Nessun risultato ${filterDesc} nella selezione corrente.`;
+                
+                addMessage(risposta, false, {
+                    risultati: filteredResults,
+                    suggerimenti: []
+                });
+                
+                return;
+            }
+
             // Add user message
             addMessage(query, true);
             chatInput.value = '';
