@@ -758,8 +758,9 @@
             // Show typing
             addTypingIndicator();
             
-            // Combina ricerca originale + suggerimento per nuova ricerca semantica
-            const combinedQuery = conversationContext.lastSearch + ' ' + suggestion;
+            // REFINEMENT PRIMA, query originale DOPO
+            // Così la ricerca semantica dà priorità al suggerimento
+            const combinedQuery = suggestion + ' ' + conversationContext.lastSearch;
             
             try {
                 const response = await fetch(API_URL, {
