@@ -5,6 +5,7 @@ import psycopg2
 from urllib.parse import parse_qs, urlparse
 import voyageai
 import anthropic
+import re
 
 # Clients
 vo = voyageai.Client(api_key=os.environ.get("VOYAGE_API_KEY"))
@@ -13,8 +14,242 @@ claude = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 def get_db():
     return psycopg2.connect(os.environ.get("NEON_DATABASE_URL"))
 
+# ============ AUTOCOMPLETE / SUGGEST (NEW) ============
+
+def get_suggestions(suggestion_type: str, query: str, limit: int = 10) -> list:
+    """Restituisce suggerimenti per artisti o autori."""
+    
+    if len(query) < 2:
+        return []
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    query_pattern = f"{query.lower()}%"
+    query_contains = f"%{query.lower()}%"
+    
+    if suggestion_type == 'artist':
+        cur.execute("""
+            SELECT DISTINCT artist, COUNT(*) as cnt
+            FROM public.book_artists
+            WHERE LOWER(artist) LIKE %s OR LOWER(artist) LIKE %s
+            GROUP BY artist
+            ORDER BY 
+                CASE WHEN LOWER(artist) LIKE %s THEN 0 ELSE 1 END,
+                cnt DESC
+            LIMIT %s
+        """, (query_pattern, query_contains, query_pattern, limit))
+    else:
+        cur.execute("""
+            SELECT DISTINCT author, COUNT(*) as cnt
+            FROM public.book_authors
+            WHERE LOWER(author) LIKE %s OR LOWER(author) LIKE %s
+            GROUP BY author
+            ORDER BY 
+                CASE WHEN LOWER(author) LIKE %s THEN 0 ELSE 1 END,
+                cnt DESC
+            LIMIT %s
+        """, (query_pattern, query_contains, query_pattern, limit))
+    
+    results = [row[0] for row in cur.fetchall()]
+    
+    cur.close()
+    conn.close()
+    
+    return results
+
+# ============ DIRECT SEARCH - NO AI (NEW) ============
+
+def search_direct_artist(name: str, limit: int = 100) -> dict:
+    """Ricerca diretta per artista - SQL only, no Claude."""
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    name_lower = name.lower().strip()
+    parts = name_lower.split()
+    
+    if len(parts) >= 2:
+        reversed_name = " ".join(reversed(parts))
+        pattern_original = f"%{name_lower}%"
+        pattern_reversed = f"%{reversed_name}%"
+    else:
+        pattern_original = f"%{name_lower}%"
+        pattern_reversed = pattern_original
+    
+    # 1. Monografie titolo
+    cur.execute("""
+        SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione, 
+               b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+               1 as ranking, 'monografia_titolo' as tipo
+        FROM public.books b
+        JOIN public.book_artists ba ON b.id = ba.book_id
+        WHERE (LOWER(ba.artist) LIKE %s OR LOWER(ba.artist) LIKE %s)
+          AND (LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s)
+          AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) = 1
+        ORDER BY b.anno DESC
+    """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed))
+    monografie_titolo = cur.fetchall()
+    
+    # 2. Monografie
+    cur.execute("""
+        SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione,
+               b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+               2 as ranking, 'monografia' as tipo
+        FROM public.books b
+        JOIN public.book_artists ba ON b.id = ba.book_id
+        WHERE (LOWER(ba.artist) LIKE %s OR LOWER(ba.artist) LIKE %s)
+          AND LOWER(b.titolo) NOT LIKE %s AND LOWER(b.titolo) NOT LIKE %s
+          AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) = 1
+        ORDER BY b.anno DESC
+    """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed))
+    monografie = cur.fetchall()
+    
+    # 3. Collettive
+    cur.execute("""
+        SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione,
+               b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+               3 as ranking, 'collettiva' as tipo
+        FROM public.books b
+        JOIN public.book_artists ba ON b.id = ba.book_id
+        WHERE (LOWER(ba.artist) LIKE %s OR LOWER(ba.artist) LIKE %s)
+          AND (SELECT COUNT(*) FROM public.book_artists ba2 WHERE ba2.book_id = b.id) > 1
+        ORDER BY b.anno DESC
+    """, (pattern_original, pattern_reversed))
+    collettive = cur.fetchall()
+    
+    # 4. Menzioni
+    found_ids = [r[0] for r in monografie_titolo + monografie + collettive]
+    if found_ids:
+        cur.execute("""
+            SELECT b.id, b.titolo, b.editore, b.anno, b.descrizione,
+                   b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+                   5 as ranking, 'menzione' as tipo
+            FROM public.books b
+            WHERE (LOWER(b.descrizione) LIKE %s OR LOWER(b.descrizione) LIKE %s
+                   OR LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s)
+              AND b.id NOT IN %s
+            ORDER BY b.anno DESC
+            LIMIT 50
+        """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed, tuple(found_ids)))
+    else:
+        cur.execute("""
+            SELECT b.id, b.titolo, b.editore, b.anno, b.descrizione,
+                   b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+                   5 as ranking, 'menzione' as tipo
+            FROM public.books b
+            WHERE (LOWER(b.descrizione) LIKE %s OR LOWER(b.descrizione) LIKE %s
+                   OR LOWER(b.titolo) LIKE %s OR LOWER(b.titolo) LIKE %s)
+            ORDER BY b.anno DESC
+            LIMIT 50
+        """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed))
+    menzioni = cur.fetchall()
+    
+    cur.close()
+    conn.close()
+    
+    columns = ['id', 'titolo', 'editore', 'anno', 'descrizione', 'prezzo', 
+               'pagine', 'lingua', 'immagine', 'isbn', 'ranking', 'tipo']
+    
+    all_results = (
+        [dict(zip(columns, r)) for r in monografie_titolo] +
+        [dict(zip(columns, r)) for r in monografie] +
+        [dict(zip(columns, r)) for r in collettive] +
+        [dict(zip(columns, r)) for r in menzioni]
+    )
+    
+    return {
+        'risultati': all_results[:limit],
+        'nome_cercato': name,
+        'conteggi': {
+            'monografie': len(monografie_titolo) + len(monografie),
+            'collettive': len(collettive),
+            'menzioni': len(menzioni),
+            'totale': len(all_results)
+        }
+    }
+
+def search_direct_author(name: str, limit: int = 100) -> dict:
+    """Ricerca diretta per autore - SQL only, no Claude."""
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    name_lower = name.lower().strip()
+    parts = name_lower.split()
+    
+    if len(parts) >= 2:
+        reversed_name = " ".join(reversed(parts))
+        pattern_original = f"%{name_lower}%"
+        pattern_reversed = f"%{reversed_name}%"
+    else:
+        pattern_original = f"%{name_lower}%"
+        pattern_reversed = pattern_original
+    
+    cur.execute("""
+        SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione,
+               b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+               4 as ranking, 'autore' as tipo
+        FROM public.books b
+        JOIN public.book_authors bau ON b.id = bau.book_id
+        WHERE (LOWER(bau.author) LIKE %s OR LOWER(bau.author) LIKE %s)
+        ORDER BY b.anno DESC
+        LIMIT %s
+    """, (pattern_original, pattern_reversed, limit))
+    
+    columns = ['id', 'titolo', 'editore', 'anno', 'descrizione', 'prezzo', 
+               'pagine', 'lingua', 'immagine', 'isbn', 'ranking', 'tipo']
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+    
+    cur.close()
+    conn.close()
+    
+    return {
+        'risultati': results,
+        'nome_cercato': name,
+        'conteggi': {'totale': len(results)}
+    }
+
+def search_direct_title(title: str, limit: int = 50) -> dict:
+    """Ricerca diretta per titolo - SQL only, no Claude."""
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    title_lower = title.lower().strip()
+    pattern = f"%{title_lower}%"
+    
+    cur.execute("""
+        SELECT b.id, b.titolo, b.editore, b.anno, b.descrizione,
+               b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
+               1 as ranking, 'titolo' as tipo
+        FROM public.books b
+        WHERE LOWER(b.titolo) LIKE %s
+        ORDER BY 
+            CASE WHEN LOWER(b.titolo) = %s THEN 0
+                 WHEN LOWER(b.titolo) LIKE %s THEN 1
+                 ELSE 2 END,
+            b.anno DESC
+        LIMIT %s
+    """, (pattern, title_lower, title_lower + '%', limit))
+    
+    columns = ['id', 'titolo', 'editore', 'anno', 'descrizione', 'prezzo', 
+               'pagine', 'lingua', 'immagine', 'isbn', 'ranking', 'tipo']
+    results = [dict(zip(columns, row)) for row in cur.fetchall()]
+    
+    cur.close()
+    conn.close()
+    
+    return {
+        'risultati': results,
+        'titolo_cercato': title,
+        'conteggi': {'totale': len(results)}
+    }
+
+# ============ AI-POWERED SEARCH (existing) ============
+
 def extract_name_from_query(query: str, context: dict = None) -> dict:
-    """Usa Claude per estrarre nomi di artisti/autori, titoli e filtri dalla query, considerando il contesto."""
+    """Usa Claude per estrarre nomi di artisti/autori, titoli e filtri dalla query."""
     
     context = context or {}
     context_info = ""
@@ -56,13 +291,8 @@ Rispondi SOLO con un oggetto JSON valido (niente altro testo):
 Esempi:
 "Bruce Nauman. Inventa e muori" → {{"tipo": "titolo", "titolo": "Inventa e muori"}}
 "hai il catalogo When attitudes become form?" → {{"tipo": "titolo", "titolo": "When attitudes become form"}}
-"cerco Live in your head" → {{"tipo": "titolo", "titolo": "Live in your head"}}
 "Bruce Nauman" → {{"tipo": "nome", "nome": "Bruce Nauman"}}
-"libri di Bruce Nauman" → {{"tipo": "nome", "nome": "Bruce Nauman"}}
-"solo in inglese" (dopo ricerca su Ghirri) → {{"tipo": "followup", "nome": "Luigi Ghirri", "lingua": "EN"}}
 "fotografia giapponese anni 70" → {{"tipo": "tematica", "tema": "fotografia giapponese", "anno_min": 1970, "anno_max": 1979}}
-
-IMPORTANTE: Se la query contiene un titolo specifico di libro (riconoscibile da maiuscole, punteggiatura, o parole come "catalogo", "libro", "hai"), usa tipo="titolo".
 
 JSON:"""
         }]
@@ -77,13 +307,11 @@ JSON:"""
         text = text.strip()
         result = json.loads(text)
         
-        # Se è un followup, usa il nome dal contesto se non specificato
         if result.get('tipo') == 'followup' and context.get('previousSearch'):
             if not result.get('nome') or result.get('nome') == '[nome precedente]':
                 result['nome'] = context.get('previousSearch')
-            result['tipo'] = 'nome'  # Trattalo come ricerca per nome
+            result['tipo'] = 'nome'
             
-            # Merge dei filtri precedenti con i nuovi
             prev_filters = context.get('previousFilters', {})
             for key in ['lingua', 'anno_min', 'anno_max']:
                 if key not in result and key in prev_filters:
@@ -94,12 +322,11 @@ JSON:"""
         return {"tipo": "tematica", "tema": query}
 
 def generate_refined_response(refinement: str, results: list, original_query: str) -> str:
-    """Genera risposta breve per ricerca affinata, senza ripetere lo schema iniziale."""
+    """Genera risposta breve per ricerca affinata."""
     
     if not results:
         return f"Nessun risultato per '{original_query}' + '{refinement}'."
     
-    # Prepara contesto con ID
     books_context = "\n".join([
         f"- ID:{r.get('id')} | \"{r.get('titolo')}\" ({r.get('editore', '')}, {r.get('anno', '')})"
         for r in results[:8]
@@ -112,43 +339,31 @@ def generate_refined_response(refinement: str, results: list, original_query: st
             "role": "user",
             "content": f"""L'utente cercava "{original_query}" e ha affinato con "{refinement}".
 
-Ecco i {len(results)} risultati più pertinenti:
-{books_context}
+Risultati: {books_context}
 
-ISTRUZIONI RIGIDE:
-1. NON iniziare con "Ho trovato..." o simili - l'utente sa già cosa ha chiesto
-2. Vai dritto ai libri: commenta 4-6 titoli, uno per riga
-3. Formato: [[ID:xxx|Titolo]] - una frase secca (max 10 parole) su cosa lo rende rilevante per "{refinement}"
-4. Niente domande finali, niente "ti interessa...", niente convenevoli
-5. Se un libro non c'entra con "{refinement}", non citarlo
-
-Esempio di formato corretto:
-[[ID:123|Titolo Uno]] - reportage diretto dall'epoca
-[[ID:456|Titolo Due]] - 200 immagini originali
-[[ID:789|Titolo Tre]] - analisi del movimento"""
+ISTRUZIONI:
+1. NON iniziare con "Ho trovato..."
+2. Commenta 4-6 titoli, formato: [[ID:xxx|Titolo]] - frase secca
+3. Niente domande finali"""
         }]
     )
     
     response_text = message.content[0].text.strip()
     
-    # Post-processing: converti [[ID:xxx|Titolo]] in link HTML
-    import re
     def replace_link(match):
         book_id = match.group(1)
         title = match.group(2)
         return f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{title}</a>'
     
     response_text = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, response_text)
-    
     return response_text
 
 def generate_comment_response(filter_term: str, books: list, original_query: str) -> str:
-    """Genera commenti brevi sui libri filtrati, senza ripetere lo schema iniziale."""
+    """Genera commenti brevi sui libri filtrati."""
     
     if not books:
         return f"Nessun risultato specifico per '{filter_term}'."
     
-    # Prepara contesto con ID
     books_context = "\n".join([
         f"- ID:{b.get('id')} | \"{b.get('titolo')}\" ({b.get('editore', '')}, {b.get('anno', '')})"
         for b in books[:8]
@@ -159,36 +374,24 @@ def generate_comment_response(filter_term: str, books: list, original_query: str
         max_tokens=400,
         messages=[{
             "role": "user",
-            "content": f"""L'utente stava cercando "{original_query}" e ha cliccato su "{filter_term}" per affinare.
+            "content": f"""L'utente cercava "{original_query}" e ha filtrato per "{filter_term}".
 
-Ecco i {len(books)} libri filtrati:
-{books_context}
+Libri: {books_context}
 
 ISTRUZIONI:
-1. NON ripetere "Ho trovato..." o "Ti segnalo..." - l'utente sa già cosa ha chiesto
-2. Vai dritto al punto: commenta brevemente 3-5 libri, uno per riga
-3. Per ogni libro: [[ID:xxx|Titolo]] - una frase secca su cosa lo rende interessante per "{filter_term}"
-4. Niente domande finali, niente "ti interessa...", niente schema ripetitivo
-5. Tono: schede rapide, come note di un bibliotecario
-
-Esempio di formato:
-[[ID:123|Titolo Uno]] - primo documento originale del movimento, raro
-[[ID:456|Titolo Due]] - ottima iconografia, 200 immagini
-[[ID:789|Titolo Tre]] - analisi accademica ma accessibile"""
+1. Commenta 3-5 libri, formato: [[ID:xxx|Titolo]] - frase secca
+2. Niente domande finali, tono da bibliotecario"""
         }]
     )
     
     response_text = message.content[0].text.strip()
     
-    # Post-processing: converti [[ID:xxx|Titolo]] in link HTML
-    import re
     def replace_link(match):
         book_id = match.group(1)
         title = match.group(2)
         return f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{title}</a>'
     
     response_text = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, response_text)
-    
     return response_text
 
 def search_by_title(title: str, limit: int = 20) -> list:
@@ -226,15 +429,11 @@ def generate_response_for_title(title: str, results: list) -> str:
     """Genera risposta per ricerca per titolo."""
     
     if not results:
-        return f"Non ho trovato libri con titolo \"{title}\". Prova con parole chiave diverse o cerca per autore/artista."
+        return f"Non ho trovato libri con titolo \"{title}\". Prova con parole chiave diverse."
     
-    # Raccogli libri per post-processing
-    all_books = results[:10]
-    
-    # Prepara contesto con ID
     books_context = "\n".join([
         f"- ID:{r['id']} | \"{r['titolo']}\" ({r['editore']}, {r['anno']}) - Lingua: {r['lingua']}"
-        for r in all_books
+        for r in results[:10]
     ])
     
     message = claude.messages.create(
@@ -242,35 +441,26 @@ def generate_response_for_title(title: str, results: list) -> str:
         max_tokens=300,
         messages=[{
             "role": "user",
-            "content": f"""Sei un bibliotecario specializzato in libri d'arte.
+            "content": f"""Sei un bibliotecario. L'utente cerca: "{title}"
 
-L'utente cerca il titolo: "{title}"
-
-RISULTATI TROVATI ({len(results)} titoli):
+RISULTATI ({len(results)} titoli):
 {books_context}
 
-REGOLA FONDAMENTALE SUI LINK:
-OGNI VOLTA che menzioni un titolo di libro, DEVI usare questo formato: [[ID:xxx|Titolo]]
-NON esistono eccezioni. NON scrivere mai un titolo senza il formato [[ID:xxx|Titolo]].
-
 ISTRUZIONI:
-- Se c'è un match, conferma: "Sì, abbiamo [[ID:xxx|Titolo]]"
-- Elenca i risultati SEMPRE nel formato [[ID:xxx|Titolo]] con editore, anno e lingua
-- Risposte brevi e dirette"""
+- Conferma se c'è un match: "Sì, abbiamo [[ID:xxx|Titolo]]"
+- Formato: [[ID:xxx|Titolo]] con editore, anno, lingua
+- Risposte brevi"""
         }]
     )
     
     response_text = message.content[0].text
     
-    # Post-processing: converti [[ID:xxx|Titolo]] in link HTML
-    import re
     def replace_link(match):
         book_id = match.group(1)
         title = match.group(2)
         return f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{title}</a>'
     
     response_text = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, response_text)
-    
     return response_text
 
 def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
@@ -281,7 +471,6 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
     
     filters = filters or {}
     
-    # Prepara entrambe le forme: "Nome Cognome" e "Cognome Nome"
     name_lower = name.lower().strip()
     parts = name_lower.split()
     
@@ -293,7 +482,6 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
         pattern_original = f"%{name_lower}%"
         pattern_reversed = pattern_original
     
-    # Costruisci filtri aggiuntivi
     extra_conditions = ""
     extra_params = []
     
@@ -309,10 +497,8 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
         extra_conditions += " AND b.anno <= %s"
         extra_params.append(str(filters['anno_max']))
     
-    # Filtro per tipo di pubblicazione
     tipo_pub = filters.get('tipo_pub')
     
-    # 1. Monografie: libri dove è l'unico artista E nome/cognome nel titolo
     cur.execute(f"""
         SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione, 
                b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
@@ -327,7 +513,6 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
     """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed) + tuple(extra_params))
     monografie_titolo = cur.fetchall()
     
-    # 2. Monografie: unico artista, nome non nel titolo
     cur.execute(f"""
         SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione,
                b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
@@ -342,7 +527,6 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
     """, (pattern_original, pattern_reversed, pattern_original, pattern_reversed) + tuple(extra_params))
     monografie = cur.fetchall()
     
-    # 3. Collettive: più artisti
     cur.execute(f"""
         SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione,
                b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
@@ -356,7 +540,6 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
     """, (pattern_original, pattern_reversed) + tuple(extra_params))
     collettive = cur.fetchall()
     
-    # 4. Come autore (testi critici, saggi)
     cur.execute(f"""
         SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.descrizione,
                b.prezzo_def_euro_web, b.pagine, b.lingua, b.permalinkimmagine, b.isbn_expo,
@@ -369,7 +552,6 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
     """, (pattern_original, pattern_reversed) + tuple(extra_params))
     come_autore = cur.fetchall()
     
-    # 5. Altri libri che menzionano l'artista in descrizione/titolo (non già trovati)
     found_ids = [r[0] for r in monografie_titolo + monografie + collettive + come_autore]
     if found_ids:
         cur.execute(f"""
@@ -401,7 +583,6 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
     cur.close()
     conn.close()
     
-    # Formatta risultati
     columns = ['id', 'titolo', 'editore', 'anno', 'descrizione', 'prezzo', 
                'pagine', 'lingua', 'immagine', 'isbn', 'ranking', 'tipo']
     
@@ -413,7 +594,6 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
         'citazioni': [dict(zip(columns, r)) for r in citazioni],
     }
     
-    # Filtra per tipo di pubblicazione se richiesto
     if tipo_pub:
         if tipo_pub == 'monografia':
             result_dict['collettive'] = []
@@ -436,16 +616,13 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
                              len(result_dict['come_autore']) + 
                              len(result_dict['citazioni']))
     
-    # Calcola filtri disponibili per i bottoni
     all_results = (result_dict['monografie_titolo'] + result_dict['monografie'] + 
                    result_dict['collettive'] + result_dict['come_autore'] + result_dict['citazioni'])
     
-    # Lingue disponibili
     lingue = {}
     for r in all_results:
         lang = r.get('lingua', '').strip().upper()
         if lang:
-            # Normalizza le lingue comuni
             if lang in ['I', 'IT', 'ITA', 'ITALIANO']:
                 lang = 'IT'
             elif lang in ['E', 'EN', 'ENG', 'ENGLISH']:
@@ -456,13 +633,12 @@ def search_by_name(name: str, filters: dict = None, limit: int = 100) -> dict:
                 lang = 'FR'
             lingue[lang] = lingue.get(lang, 0) + 1
     
-    # Anni - trova range
     anni = [int(r.get('anno', 0)) for r in all_results if r.get('anno') and str(r.get('anno')).isdigit()]
     anno_min = min(anni) if anni else None
     anno_max = max(anni) if anni else None
     
     result_dict['filtri_disponibili'] = {
-        'lingue': dict(sorted(lingue.items(), key=lambda x: -x[1])),  # Ordinate per frequenza
+        'lingue': dict(sorted(lingue.items(), key=lambda x: -x[1])),
         'tipi': {
             'monografia': len(result_dict['monografie_titolo']) + len(result_dict['monografie']),
             'collettiva': len(result_dict['collettive']),
@@ -509,19 +685,10 @@ def generate_response_for_name(name: str, results: dict, filters: dict = None) -
         filter_msg = ""
         if filters.get('lingua'):
             filter_msg = f" in lingua {filters['lingua']}"
-        if filters.get('anno_min') or filters.get('anno_max'):
-            if filters.get('anno_min') and filters.get('anno_max'):
-                filter_msg += f" dal {filters['anno_min']} al {filters['anno_max']}"
-            elif filters.get('anno_min'):
-                filter_msg += f" dal {filters['anno_min']}"
-            elif filters.get('anno_max'):
-                filter_msg += f" fino al {filters['anno_max']}"
-        return f"Non ho trovato pubblicazioni su {name}{filter_msg}. Vuoi provare senza filtri o cercare un nome simile?"
+        return f"Non ho trovato pubblicazioni su {name}{filter_msg}. Vuoi provare senza filtri?"
     
-    # Costruisci contesto per Claude
     context_parts = []
     
-    # Aggiungi info sui filtri applicati
     filter_info = []
     if filters.get('lingua'):
         filter_info.append(f"lingua: {filters['lingua']}")
@@ -531,9 +698,8 @@ def generate_response_for_name(name: str, results: dict, filters: dict = None) -
         filter_info.append(f"fino al {filters['anno_max']}")
     
     if filter_info:
-        context_parts.append(f"FILTRI APPLICATI: {', '.join(filter_info)}")
+        context_parts.append(f"FILTRI: {', '.join(filter_info)}")
     
-    # Conteggi
     n_mono = len(results['monografie_titolo']) + len(results['monografie'])
     n_coll = len(results['collettive'])
     n_autore = len(results['come_autore'])
@@ -541,12 +707,11 @@ def generate_response_for_name(name: str, results: dict, filters: dict = None) -
     
     context_parts.append(f"""CONTEGGI:
 - Monografie: {n_mono}
-- Cataloghi collettivi: {n_coll}
-- Scritti dell'artista: {n_autore}
-- Menzioni in altri volumi: {n_citazioni}
+- Collettive: {n_coll}
+- Come autore: {n_autore}
+- Menzioni: {n_citazioni}
 - Totale: {results['totale']}""")
     
-    # Raccogli tutti i libri con ID per il post-processing
     all_books = []
     
     if results['monografie_titolo']:
@@ -561,85 +726,60 @@ def generate_response_for_name(name: str, results: dict, filters: dict = None) -
     
     if results['collettive']:
         titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['collettive'][:3]]
-        context_parts.append(f"CATALOGHI COLLETTIVI:\n" + "\n".join(titles))
+        context_parts.append(f"COLLETTIVE:\n" + "\n".join(titles))
         all_books.extend(results['collettive'][:3])
     
     if results['come_autore']:
         titles = [f"- \"{r['titolo']}\" ({r['editore']}, {r['anno']})" for r in results['come_autore'][:2]]
-        context_parts.append(f"SCRITTI DALL'ARTISTA:\n" + "\n".join(titles))
+        context_parts.append(f"COME AUTORE:\n" + "\n".join(titles))
         all_books.extend(results['come_autore'][:2])
     
     context = "\n\n".join(context_parts)
     
-    # Prepara lista libri con ID per il formato link
-    books_with_ids = "\n".join([
-        f"ID:{b['id']} | {b['titolo']}"
-        for b in all_books
-    ])
+    books_with_ids = "\n".join([f"ID:{b['id']} | {b['titolo']}" for b in all_books])
     
     message = claude.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=400,
         messages=[{
             "role": "user",
-            "content": f"""Sei un bibliotecario specializzato in libri d'arte, fotografia e illustrazione.
+            "content": f"""Bibliotecario arte. Utente cerca: {name}
 
-TONO:
-- Informativo, preciso, disponibile
-- Mai da venditore: niente aggettivi roboanti, niente enfasi promozionale
-- Dici i dati, offri opzioni, aiuti a trovare
+DATI: {context}
 
-L'utente cerca: {name}
+LIBRI (usa per link): {books_with_ids}
 
-DATI DAL CATALOGO:
-{context}
-
-LIBRI DISPONIBILI (usa questi ID per i link):
-{books_with_ids}
-
-REGOLA FONDAMENTALE SUI LINK:
-OGNI VOLTA che menzioni un titolo di libro, DEVI usare questo formato: [[ID:xxx|Titolo]]
-NON esistono eccezioni. Se citi un libro, DEVE avere il link.
-NON scrivere mai un titolo senza il formato [[ID:xxx|Titolo]].
-
-ISTRUZIONI:
-1. Inizia con i numeri: totale titoli, suddivisione per tipo
-2. Cita 3-5 titoli, SEMPRE nel formato [[ID:xxx|Titolo esatto come fornito]]
-3. Concludi con: "Filtro per periodo, lingua o tipo?"
-4. Risposte brevi
-5. Rispondi nella lingua dell'utente"""
+REGOLE:
+- Formato link: [[ID:xxx|Titolo]]
+- Inizia con numeri totali
+- Cita 3-5 titoli
+- Concludi: "Filtro per periodo, lingua o tipo?"
+- Breve, lingua utente"""
         }]
     )
     
     response_text = message.content[0].text
     
-    # Post-processing: converti [[ID:xxx|Titolo]] in link HTML
-    import re
     def replace_link(match):
         book_id = match.group(1)
         title = match.group(2)
         return f'<a href="https://test01-frontend.vercel.app/books/{book_id}" target="_blank">{title}</a>'
     
     response_text = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, response_text)
-    
     return response_text
 
 def generate_response_semantic(query: str, results: list) -> dict:
-    """Genera risposta per ricerca semantica (esplorativa). Restituisce dict con risposta e suggerimenti."""
+    """Genera risposta per ricerca semantica."""
     
     if not results:
         return {
-            "risposta": "Non ho trovato risultati per questa ricerca. Prova con termini diversi o chiedimi un suggerimento su un tema specifico.",
+            "risposta": "Non ho trovato risultati. Prova con termini diversi.",
             "suggerimenti": []
         }
     
-    # Raccogli libri per post-processing - includi ID nel contesto
-    all_books = results[:7]
-    
-    # Prepara contesto CON ID per ogni libro
     books_context = "\n".join([
         f"- ID:{r['id']} | \"{r['titolo']}\" ({r['editore']}, {r['anno']})"
-        for r in all_books
+        for r in results[:7]
     ])
     
     message = claude.messages.create(
@@ -647,43 +787,24 @@ def generate_response_semantic(query: str, results: list) -> dict:
         max_tokens=500,
         messages=[{
             "role": "user",
-            "content": f"""Sei un bibliotecario specializzato in libri d'arte, fotografia e illustrazione.
+            "content": f"""Bibliotecario arte. Query: "{query}"
 
-TONO:
-- Informativo, preciso, disponibile
-- Mai da venditore: niente aggettivi roboanti
-- Colloquiale ma competente
+RISULTATI: {books_context}
 
-L'utente cerca: "{query}"
-
-RISULTATI TROVATI:
-{books_context}
-
-REGOLA FONDAMENTALE SUI LINK:
-OGNI VOLTA che menzioni un titolo di libro, DEVI usare questo formato: [[ID:xxx|Titolo]]
-NON esistono eccezioni. NON scrivere mai un titolo senza il formato [[ID:xxx|Titolo]].
-
-ISTRUZIONI:
-1. Presenta brevemente cosa hai trovato
-2. Cita 3-5 libri, SEMPRE nel formato [[ID:xxx|Titolo esatto come fornito]]
-3. Se la ricerca è generica, FAI DOMANDE per capire meglio cosa cerca l'utente
-4. Suggerisci direzioni possibili
-5. Risposte conversazionali, come un bibliotecario che aiuta
-6. Rispondi nella lingua dell'utente
+REGOLE:
+- Formato link: [[ID:xxx|Titolo]]
+- Cita 3-5 libri
+- Se ricerca generica, fai domande
+- Lingua utente
 
 OBBLIGATORIO - ULTIMA RIGA:
-Devi SEMPRE terminare la risposta con questa riga esatta (su una riga separata):
 SUGGERIMENTI: termine1, termine2, termine3, termine4
-
-Dove i termini sono 3-5 parole/frasi BREVI (1-3 parole) che affinano la ricerca.
-Esempi: "anni 70", "fotografia", "Italia", "poster", "riviste"
-Questa riga è OBBLIGATORIA, non dimenticarla mai."""
+(3-5 parole brevi per affinare)"""
         }]
     )
     
     response_text = message.content[0].text.strip()
     
-    # Estrai suggerimenti dalla risposta
     suggerimenti = []
     if "SUGGERIMENTI:" in response_text:
         parts = response_text.split("SUGGERIMENTI:")
@@ -692,8 +813,6 @@ Questa riga è OBBLIGATORIA, non dimenticarla mai."""
             sugg_text = parts[1].strip()
             suggerimenti = [s.strip() for s in sugg_text.split(",") if s.strip()]
     
-    # Post-processing: converti [[ID:xxx|Titolo]] in link HTML
-    import re
     def replace_link(match):
         book_id = match.group(1)
         title = match.group(2)
@@ -701,10 +820,9 @@ Questa riga è OBBLIGATORIA, non dimenticarla mai."""
     
     response_text = re.sub(r'\[\[ID:([^\|]+)\|([^\]]+)\]\]', replace_link, response_text)
     
-    return {
-        "risposta": response_text,
-        "suggerimenti": suggerimenti
-    }
+    return {"risposta": response_text, "suggerimenti": suggerimenti}
+
+# ============ HTTP HANDLER ============
 
 class handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -721,24 +839,37 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         
         parsed = urlparse(self.path)
+        path = parsed.path
         params = parse_qs(parsed.query)
         
+        # NEW: /api/suggest endpoint
+        if path == '/api/suggest':
+            suggestion_type = params.get('type', ['artist'])[0]
+            query = params.get('q', [''])[0]
+            limit = int(params.get('limit', ['10'])[0])
+            
+            suggestions = get_suggestions(suggestion_type, query, limit)
+            
+            self.wfile.write(json.dumps({
+                "suggestions": suggestions
+            }).encode())
+            return
+        
+        # Existing /api/search GET
         query = params.get('q', [''])[0]
         limit = int(params.get('limit', ['10'])[0])
         
         if not query:
             self.wfile.write(json.dumps({
                 "status": "ok",
-                "message": "Libro Search API v2. Usa ?q=query per cercare."
+                "message": "Libro Search API v3. Usa ?q=query per cercare."
             }).encode())
             return
         
         try:
-            # Estrai tipo di query (GET non ha contesto)
             query_info = extract_name_from_query(query, None)
             
             if query_info.get('tipo') == 'titolo':
-                # Ricerca per titolo
                 title = query_info['titolo']
                 results = search_by_title(title, limit)
                 risposta = generate_response_for_title(title, results)
@@ -750,19 +881,14 @@ class handler(BaseHTTPRequestHandler):
                     "risultati": results
                 }, default=str).encode())
             elif query_info.get('tipo') == 'nome':
-                # Ricerca per nome con filtri
                 name = query_info['nome']
                 filters = {k: v for k, v in query_info.items() if k in ['lingua', 'anno_min', 'anno_max', 'tipo_pub']}
                 results = search_by_name(name, filters, limit)
                 risposta = generate_response_for_name(name, results, filters)
                 
-                # Combina tutti i risultati per la lista
                 all_results = (
-                    results['monografie_titolo'] + 
-                    results['monografie'] + 
-                    results['collettive'] + 
-                    results['come_autore'] + 
-                    results['citazioni'][:20]
+                    results['monografie_titolo'] + results['monografie'] + 
+                    results['collettive'] + results['come_autore'] + results['citazioni'][:20]
                 )
                 
                 self.wfile.write(json.dumps({
@@ -781,7 +907,6 @@ class handler(BaseHTTPRequestHandler):
                     }
                 }, default=str).encode())
             else:
-                # Ricerca semantica
                 results = search_semantic(query, limit)
                 response_data = generate_response_semantic(query, results)
                 
@@ -793,9 +918,7 @@ class handler(BaseHTTPRequestHandler):
                 }, default=str).encode())
                 
         except Exception as e:
-            self.wfile.write(json.dumps({
-                "error": str(e)
-            }).encode())
+            self.wfile.write(json.dumps({"error": str(e)}).encode())
     
     def do_POST(self):
         self.send_response(200)
@@ -810,16 +933,48 @@ class handler(BaseHTTPRequestHandler):
             data = json.loads(body)
             query = data.get('query', '')
             limit = data.get('limit', 50)
+            direct = data.get('direct', False)
+            search_type = data.get('searchType', None)
             direct_filters = data.get('filters', None)
             mode = data.get('mode', None)
             
             if not query:
-                self.wfile.write(json.dumps({
-                    "error": "Query richiesta"
-                }).encode())
+                self.wfile.write(json.dumps({"error": "Query richiesta"}).encode())
                 return
             
-            # Modalità commento: Claude commenta libri già filtrati
+            # NEW: Direct search (no AI)
+            if direct:
+                if search_type == 'artist':
+                    result = search_direct_artist(query, limit)
+                    self.wfile.write(json.dumps({
+                        "tipo_ricerca": "diretto",
+                        "nome_cercato": query,
+                        "risultati": result['risultati'],
+                        "conteggi": result['conteggi']
+                    }, default=str).encode())
+                    return
+                    
+                elif search_type == 'author':
+                    result = search_direct_author(query, limit)
+                    self.wfile.write(json.dumps({
+                        "tipo_ricerca": "diretto",
+                        "nome_cercato": query,
+                        "risultati": result['risultati'],
+                        "conteggi": result['conteggi']
+                    }, default=str).encode())
+                    return
+                    
+                elif search_type == 'title':
+                    result = search_direct_title(query, limit)
+                    self.wfile.write(json.dumps({
+                        "tipo_ricerca": "diretto",
+                        "titolo_cercato": query,
+                        "risultati": result['risultati'],
+                        "conteggi": result['conteggi']
+                    }, default=str).encode())
+                    return
+            
+            # Comment mode
             if mode == 'comment':
                 filtered_books = data.get('filteredBooks', [])
                 original_query = data.get('originalQuery', '')
@@ -832,57 +987,41 @@ class handler(BaseHTTPRequestHandler):
                 }, default=str).encode())
                 return
             
-            # Modalità affinata: nuova ricerca semantica con risposta breve
+            # Refined mode
             if mode == 'refined':
                 original_query = data.get('originalQuery', '')
                 refinement = data.get('refinement', '')
-                
-                # Fai ricerca semantica con query combinata
                 results = search_semantic(query, limit)
-                
-                # Genera risposta in stile commento (breve, senza schema ripetitivo)
                 risposta = generate_refined_response(refinement, results, original_query)
                 
                 self.wfile.write(json.dumps({
                     "tipo_ricerca": "affinata",
                     "risposta": risposta,
                     "risultati": results,
-                    "suggerimenti": []  # Niente nuovi suggerimenti dopo affinamento
+                    "suggerimenti": []
                 }, default=str).encode())
                 return
             
-            # Se ci sono filtri diretti, salta Claude e fai ricerca diretta per nome
+            # Direct filters (existing)
             if direct_filters:
-                name = query  # query è il nome dell'artista
+                name = query
                 results = search_by_name(name, direct_filters, limit)
                 
-                # Genera risposta semplice SENZA Claude
                 totale = results['totale']
                 filter_desc = []
                 if direct_filters.get('lingua'):
-                    lang_names = {'IT': 'in italiano', 'EN': 'in inglese', 'DE': 'in tedesco', 'FR': 'in francese', 'ES': 'in spagnolo'}
+                    lang_names = {'IT': 'in italiano', 'EN': 'in inglese', 'DE': 'in tedesco', 'FR': 'in francese'}
                     filter_desc.append(lang_names.get(direct_filters['lingua'], f"in {direct_filters['lingua']}"))
                 if direct_filters.get('tipo_pub'):
-                    tipo_names = {'monografia': 'monografie', 'collettiva': 'cataloghi collettivi', 'autore': 'scritti come autore'}
+                    tipo_names = {'monografia': 'monografie', 'collettiva': 'collettive', 'autore': 'come autore'}
                     filter_desc.append(tipo_names.get(direct_filters['tipo_pub'], direct_filters['tipo_pub']))
-                if direct_filters.get('anno_min'):
-                    filter_desc.append(f"dal {direct_filters['anno_min']}")
-                if direct_filters.get('anno_max'):
-                    filter_desc.append(f"fino al {direct_filters['anno_max']}")
                 
                 filter_text = ', '.join(filter_desc) if filter_desc else ''
-                
-                if totale == 0:
-                    risposta = f"Nessun risultato per {name} {filter_text}. Prova a rimuovere qualche filtro."
-                else:
-                    risposta = f"{totale} risultati per {name} {filter_text}."
+                risposta = f"{totale} risultati per {name} {filter_text}." if totale > 0 else f"Nessun risultato per {name} {filter_text}."
                 
                 all_results = (
-                    results['monografie_titolo'] + 
-                    results['monografie'] + 
-                    results['collettive'] + 
-                    results['come_autore'] + 
-                    results['citazioni'][:20]
+                    results['monografie_titolo'] + results['monografie'] + 
+                    results['collettive'] + results['come_autore'] + results['citazioni'][:20]
                 )
                 
                 self.wfile.write(json.dumps({
@@ -902,12 +1041,11 @@ class handler(BaseHTTPRequestHandler):
                 }, default=str).encode())
                 return
             
-            # Estrai tipo di query con contesto
+            # AI-powered search (existing)
             context = data.get('context', {})
             query_info = extract_name_from_query(query, context)
             
             if query_info.get('tipo') == 'titolo':
-                # Ricerca per titolo
                 title = query_info['titolo']
                 results = search_by_title(title, limit)
                 risposta = generate_response_for_title(title, results)
@@ -925,11 +1063,8 @@ class handler(BaseHTTPRequestHandler):
                 risposta = generate_response_for_name(name, results, filters)
                 
                 all_results = (
-                    results['monografie_titolo'] + 
-                    results['monografie'] + 
-                    results['collettive'] + 
-                    results['come_autore'] + 
-                    results['citazioni'][:20]
+                    results['monografie_titolo'] + results['monografie'] + 
+                    results['collettive'] + results['come_autore'] + results['citazioni'][:20]
                 )
                 
                 self.wfile.write(json.dumps({
@@ -959,6 +1094,4 @@ class handler(BaseHTTPRequestHandler):
                 }, default=str).encode())
                 
         except Exception as e:
-            self.wfile.write(json.dumps({
-                "error": str(e)
-            }).encode())
+            self.wfile.write(json.dumps({"error": str(e)}).encode())

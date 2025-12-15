@@ -23,6 +23,9 @@
             --ibm-gray-10: #161616;
             --ibm-warm: #f7f3f2;
             --terminal-green: #42be65;
+            --artist-color: #8a3ffc;
+            --author-color: #007d79;
+            --title-color: #da1e28;
         }
 
         * {
@@ -152,6 +155,18 @@
             font-size: 0.9rem;
         }
 
+        .message-user .message-content.direct-artist {
+            background: var(--artist-color);
+        }
+
+        .message-user .message-content.direct-author {
+            background: var(--author-color);
+        }
+
+        .message-user .message-content.direct-title {
+            background: var(--title-color);
+        }
+
         .message-bot {
             display: flex;
             flex-direction: column;
@@ -178,7 +193,172 @@
             color: var(--ibm-blue-dark);
         }
 
-        /* Results preview in message */
+        /* Results section in direct search */
+        .results-section {
+            margin-top: 1rem;
+        }
+
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--ibm-gray-90);
+        }
+
+        .results-count {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--ibm-gray-60);
+        }
+
+        .results-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .control-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.65rem;
+            color: var(--ibm-gray-60);
+            text-transform: uppercase;
+        }
+
+        .control-select {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border: 1px solid var(--ibm-gray-80);
+            background: white;
+            color: var(--ibm-gray-30);
+            border-radius: 3px;
+            cursor: pointer;
+        }
+
+        .control-select:hover {
+            border-color: var(--ibm-blue);
+        }
+
+        /* Grouped results */
+        .results-group {
+            margin-bottom: 1rem;
+        }
+
+        .results-group-header {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--ibm-gray-30);
+            background: var(--ibm-gray-90);
+            padding: 0.4rem 0.75rem;
+            margin-bottom: 0.5rem;
+            border-radius: 3px;
+            display: flex;
+            justify-content: space-between;
+            cursor: pointer;
+        }
+
+        .results-group-header:hover {
+            background: var(--ibm-gray-80);
+        }
+
+        .results-group-header .count {
+            color: var(--ibm-gray-60);
+        }
+
+        .results-group-content {
+            padding-left: 0.5rem;
+        }
+
+        .results-group-content.collapsed {
+            display: none;
+        }
+
+        /* Results list (compact) */
+        .result-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--ibm-gray-90);
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .result-item-img {
+            width: 50px;
+            height: 65px;
+            object-fit: cover;
+            background: var(--ibm-gray-90);
+            flex-shrink: 0;
+            border-radius: 2px;
+        }
+
+        .result-item-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .result-item-title {
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 0.15rem;
+        }
+
+        .result-item-title a {
+            color: var(--ibm-gray-10);
+            text-decoration: none;
+        }
+
+        .result-item-title a:hover {
+            color: var(--ibm-blue);
+        }
+
+        .result-item-meta {
+            font-size: 0.7rem;
+            color: var(--ibm-gray-60);
+        }
+
+        .result-item-type {
+            display: inline-block;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.6rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 2px;
+            margin-left: 0.5rem;
+            text-transform: uppercase;
+        }
+
+        .result-item-type.monografia {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .result-item-type.collettiva {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .result-item-type.autore {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .result-item-type.menzione {
+            background: var(--ibm-gray-90);
+            color: var(--ibm-gray-60);
+        }
+
+        /* Results preview in message (for AI search) */
         .results-preview {
             margin-top: 1rem;
             padding-top: 1rem;
@@ -408,6 +588,10 @@
             padding: 1rem;
         }
 
+        .input-wrapper {
+            position: relative;
+        }
+
         .input-box {
             display: flex;
             gap: 0.5rem;
@@ -431,6 +615,18 @@
 
         .chat-input::placeholder {
             color: var(--ibm-gray-60);
+        }
+
+        .chat-input.mode-artist {
+            border-color: var(--artist-color);
+        }
+
+        .chat-input.mode-author {
+            border-color: var(--author-color);
+        }
+
+        .chat-input.mode-title {
+            border-color: var(--title-color);
         }
 
         .send-btn {
@@ -457,17 +653,97 @@
             cursor: not-allowed;
         }
 
+        /* Autocomplete dropdown */
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 70px;
+            background: white;
+            border: 1px solid var(--ibm-gray-80);
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            max-height: 250px;
+            overflow-y: auto;
+            z-index: 100;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .autocomplete-dropdown.visible {
+            display: block;
+        }
+
+        .autocomplete-item {
+            padding: 0.6rem 1rem;
+            cursor: pointer;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .autocomplete-item:hover,
+        .autocomplete-item.selected {
+            background: var(--ibm-gray-100);
+        }
+
+        .autocomplete-item .type-badge {
+            font-size: 0.6rem;
+            padding: 0.1rem 0.4rem;
+            border-radius: 2px;
+            text-transform: uppercase;
+        }
+
+        .autocomplete-item .type-badge.artist {
+            background: var(--artist-color);
+            color: white;
+        }
+
+        .autocomplete-item .type-badge.author {
+            background: var(--author-color);
+            color: white;
+        }
+
+        .autocomplete-item .match-highlight {
+            background: #fff3cd;
+        }
+
         .input-hint {
             margin-top: 0.5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
         }
 
         .hint-text {
             font-size: 0.7rem;
             color: var(--ibm-gray-60);
         }
+
+        .hint-syntax {
+            display: flex;
+            gap: 1rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.65rem;
+        }
+
+        .hint-syntax span {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .hint-syntax .prefix {
+            font-weight: 600;
+        }
+
+        .hint-syntax .prefix.artist { color: var(--artist-color); }
+        .hint-syntax .prefix.author { color: var(--author-color); }
+        .hint-syntax .prefix.title { color: var(--title-color); }
 
         .new-search-btn {
             font-family: 'IBM Plex Mono', monospace;
@@ -500,7 +776,47 @@
         .welcome-message p {
             font-size: 0.9rem;
             max-width: 400px;
+            margin: 0 auto 1rem;
+        }
+
+        .welcome-examples {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.5rem;
+            max-width: 500px;
             margin: 0 auto;
+        }
+
+        .welcome-example {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            padding: 0.4rem 0.75rem;
+            background: white;
+            border: 1px solid var(--ibm-gray-80);
+            border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .welcome-example:hover {
+            border-color: var(--ibm-blue);
+            color: var(--ibm-blue);
+        }
+
+        .welcome-example.artist {
+            border-color: var(--artist-color);
+            color: var(--artist-color);
+        }
+
+        .welcome-example.author {
+            border-color: var(--author-color);
+            color: var(--author-color);
+        }
+
+        .welcome-example.title {
+            border-color: var(--title-color);
+            color: var(--title-color);
         }
 
         /* Loading */
@@ -540,6 +856,14 @@
             .results-modal-grid {
                 grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
             }
+
+            .hint-syntax {
+                display: none;
+            }
+
+            .results-controls {
+                flex-wrap: wrap;
+            }
         }
     </style>
 </head>
@@ -570,7 +894,13 @@
             <div class="chat-container" id="chatContainer">
                 <div class="welcome-message" id="welcomeMessage">
                     <div class="welcome-icon">[ ]</div>
-                    <p>Cerca un artista, un tema o chiedi un consiglio. Posso aiutarti a trovare libri nel catalogo.</p>
+                    <p>Cerca un artista, un tema o chiedi un consiglio. Usa i prefissi per ricerche dirette.</p>
+                    <div class="welcome-examples">
+                        <button class="welcome-example artist" onclick="setExample('@Bruce Nauman')">@Bruce Nauman</button>
+                        <button class="welcome-example author" onclick="setExample('#Germano Celant')">#Germano Celant</button>
+                        <button class="welcome-example title" onclick="setExample('&quot;When attitudes become form&quot')">"When attitudes..."</button>
+                        <button class="welcome-example" onclick="setExample('fotografia giapponese')">fotografia giapponese</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -578,18 +908,26 @@
 
     <div class="input-area">
         <div class="container">
-            <div class="input-box">
-                <input 
-                    type="text" 
-                    class="chat-input" 
-                    id="chatInput" 
-                    placeholder="Scrivi qui..."
-                    autofocus
-                >
-                <button class="send-btn" id="sendBtn">Invia</button>
+            <div class="input-wrapper">
+                <div class="input-box">
+                    <input 
+                        type="text" 
+                        class="chat-input" 
+                        id="chatInput" 
+                        placeholder="Scrivi qui..."
+                        autocomplete="off"
+                        autofocus
+                    >
+                    <button class="send-btn" id="sendBtn">Invia</button>
+                </div>
+                <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
             </div>
             <div class="input-hint">
-                <span class="hint-text">Prova: "Bruce Nauman", "fotografia giapponese", "consigliami un libro su..."</span>
+                <div class="hint-syntax">
+                    <span><span class="prefix artist">@</span> artista</span>
+                    <span><span class="prefix author">#</span> autore</span>
+                    <span><span class="prefix title">"..."</span> titolo</span>
+                </div>
                 <button class="new-search-btn" id="newSearchBtn">Nuova ricerca</button>
             </div>
         </div>
@@ -608,13 +946,21 @@
 
     <script>
         const API_URL = '/api/search';
+        const SUGGEST_URL = '/api/suggest';
+        const BOOK_URL = 'https://test01-frontend.vercel.app/books';
         
         // Conversation context
         let conversationContext = {
             lastSearch: null,
             lastResults: [],
-            lastFilters: {}
+            lastFilters: {},
+            searchType: null  // 'direct-artist', 'direct-author', 'direct-title', 'ai'
         };
+
+        // Autocomplete state
+        let autocompleteData = [];
+        let selectedAutocompleteIndex = -1;
+        let autocompleteTimeout = null;
 
         const chatContainer = document.getElementById('chatContainer');
         const chatInput = document.getElementById('chatInput');
@@ -624,6 +970,138 @@
         const resultsModal = document.getElementById('resultsModal');
         const resultsModalGrid = document.getElementById('resultsModalGrid');
         const closeModal = document.getElementById('closeModal');
+        const autocompleteDropdown = document.getElementById('autocompleteDropdown');
+
+        // ============ QUERY PARSING ============
+
+        function parseQuery(query) {
+            query = query.trim();
+            
+            // @artista
+            if (query.startsWith('@')) {
+                return {
+                    type: 'artist',
+                    value: query.slice(1).trim(),
+                    display: query
+                };
+            }
+            
+            // #autore
+            if (query.startsWith('#')) {
+                return {
+                    type: 'author',
+                    value: query.slice(1).trim(),
+                    display: query
+                };
+            }
+            
+            // "titolo" o «titolo»
+            const titleMatch = query.match(/^["«](.+?)["»]$/);
+            if (titleMatch) {
+                return {
+                    type: 'title',
+                    value: titleMatch[1].trim(),
+                    display: query
+                };
+            }
+            
+            // Ricerca AI normale
+            return {
+                type: 'ai',
+                value: query,
+                display: query
+            };
+        }
+
+        function getInputMode() {
+            const value = chatInput.value;
+            if (value.startsWith('@')) return 'artist';
+            if (value.startsWith('#')) return 'author';
+            if (value.startsWith('"') || value.startsWith('«')) return 'title';
+            return null;
+        }
+
+        function updateInputStyle() {
+            const mode = getInputMode();
+            chatInput.classList.remove('mode-artist', 'mode-author', 'mode-title');
+            if (mode) {
+                chatInput.classList.add(`mode-${mode}`);
+            }
+        }
+
+        // ============ AUTOCOMPLETE ============
+
+        async function fetchSuggestions(type, query) {
+            if (query.length < 2) {
+                hideAutocomplete();
+                return;
+            }
+
+            try {
+                const response = await fetch(`${SUGGEST_URL}?type=${type}&q=${encodeURIComponent(query)}`);
+                if (!response.ok) return;
+                
+                const data = await response.json();
+                if (data.suggestions && data.suggestions.length > 0) {
+                    autocompleteData = data.suggestions.map(s => ({
+                        name: s,
+                        type: type
+                    }));
+                    showAutocomplete();
+                } else {
+                    hideAutocomplete();
+                }
+            } catch (e) {
+                console.error('Autocomplete error:', e);
+                hideAutocomplete();
+            }
+        }
+
+        function showAutocomplete() {
+            if (autocompleteData.length === 0) {
+                hideAutocomplete();
+                return;
+            }
+
+            const query = chatInput.value.slice(1).toLowerCase(); // Remove prefix
+            
+            autocompleteDropdown.innerHTML = autocompleteData.map((item, index) => {
+                const highlighted = highlightMatch(item.name, query);
+                return `
+                    <div class="autocomplete-item ${index === selectedAutocompleteIndex ? 'selected' : ''}" 
+                         data-index="${index}">
+                        <span class="type-badge ${item.type}">${item.type === 'artist' ? 'ART' : 'AUT'}</span>
+                        <span>${highlighted}</span>
+                    </div>
+                `;
+            }).join('');
+            
+            autocompleteDropdown.classList.add('visible');
+        }
+
+        function hideAutocomplete() {
+            autocompleteDropdown.classList.remove('visible');
+            autocompleteData = [];
+            selectedAutocompleteIndex = -1;
+        }
+
+        function highlightMatch(text, query) {
+            if (!query) return text;
+            const regex = new RegExp(`(${query})`, 'gi');
+            return text.replace(regex, '<span class="match-highlight">$1</span>');
+        }
+
+        function selectAutocomplete(index) {
+            if (index < 0 || index >= autocompleteData.length) return;
+            
+            const item = autocompleteData[index];
+            const prefix = item.type === 'artist' ? '@' : '#';
+            chatInput.value = prefix + item.name;
+            hideAutocomplete();
+            chatInput.focus();
+        }
+
+        // ============ MESSAGES ============
 
         function addMessage(content, isUser = false, data = null) {
             if (welcomeMessage) {
@@ -633,90 +1111,405 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'message-user' : 'message-bot'}`;
 
-            let html = `<div class="message-content">${content}`;
-
-            // Add filter buttons if available (for name searches)
-            if (data && data.filtri_disponibili && data.tipo_ricerca === 'nome') {
-                const filters = data.filtri_disponibili;
-                html += `<div class="filter-buttons">`;
-                html += `<div class="filter-buttons-label">Filtra risultati:</div>`;
-                
-                // Tipo pubblicazione buttons
-                if (filters.tipi) {
-                    html += `<div class="filter-buttons-row">`;
-                    if (filters.tipi.monografia > 0) {
-                        html += `<button class="filter-btn" onclick="applyFilter('tipo_pub', 'monografia')">Monografie <span class="count">(${filters.tipi.monografia})</span></button>`;
-                    }
-                    if (filters.tipi.collettiva > 0) {
-                        html += `<button class="filter-btn" onclick="applyFilter('tipo_pub', 'collettiva')">Collettive <span class="count">(${filters.tipi.collettiva})</span></button>`;
-                    }
-                    if (filters.tipi.autore > 0) {
-                        html += `<button class="filter-btn" onclick="applyFilter('tipo_pub', 'autore')">Come autore <span class="count">(${filters.tipi.autore})</span></button>`;
-                    }
-                    html += `</div>`;
-                }
-                
-                // Lingua buttons
-                if (filters.lingue && Object.keys(filters.lingue).length > 1) {
-                    html += `<div class="filter-buttons-row">`;
-                    const langNames = {'IT': 'Italiano', 'EN': 'English', 'DE': 'Deutsch', 'FR': 'Français', 'ES': 'Español'};
-                    for (const [lang, count] of Object.entries(filters.lingue).slice(0, 5)) {
-                        const langName = langNames[lang] || lang;
-                        html += `<button class="filter-btn" onclick="applyFilter('lingua', '${lang}')">${langName} <span class="count">(${count})</span></button>`;
-                    }
-                    html += `</div>`;
-                }
-                
-                html += `</div>`;
-            }
-            
-            // Add suggestion buttons for semantic search
-            if (data && data.suggerimenti && data.suggerimenti.length > 0) {
-                // Store suggestions globally for access by buttons
-                window.currentSuggestions = data.suggerimenti;
-                html += `<div class="filter-buttons">`;
-                html += `<div class="filter-buttons-label">Affina la ricerca:</div>`;
-                html += `<div class="filter-buttons-row">`;
-                data.suggerimenti.forEach((suggestion, index) => {
-                    html += `<button class="filter-btn suggestion-btn" data-suggestion-index="${index}">${suggestion}</button>`;
-                });
-                html += `</div>`;
-                html += `</div>`;
+            let contentClass = '';
+            if (isUser && data?.searchType) {
+                contentClass = `direct-${data.searchType}`;
             }
 
-            // Add results preview if available
-            const results = data ? data.risultati : null;
-            if (results && results.length > 0) {
-                html += `
-                    <div class="results-preview">
-                        <div class="results-preview-title">${results.length} risultati trovati</div>
-                        <div class="results-mini-grid">
-                            ${results.slice(0, 5).map(book => `
-                                <a href="https://test01-frontend.vercel.app/books/${book.id}" target="_blank" class="result-mini-card">
-                                    <img src="${book.immagine || ''}" alt="" class="result-mini-img" onerror="this.style.display='none'">
-                                    <div class="result-mini-title">${truncate(book.titolo, 50)}</div>
-                                </a>
-                            `).join('')}
-                        </div>
-                        ${results.length > 5 ? `<button class="show-all-btn" onclick="showAllResults()">Mostra tutti (${results.length})</button>` : ''}
-                    </div>
-                `;
+            let html = `<div class="message-content ${contentClass}">${content}`;
+
+            // For direct searches, show sortable results
+            if (!isUser && data && data.tipo_ricerca === 'diretto' && data.risultati) {
+                html += renderDirectResults(data.risultati, data);
+            }
+            // For AI name searches, show filter buttons
+            else if (!isUser && data && data.filtri_disponibili && data.tipo_ricerca === 'nome') {
+                html += renderFilterButtons(data);
+                html += renderResultsPreview(data.risultati);
+            }
+            // For semantic searches, show suggestions and preview
+            else if (!isUser && data && data.tipo_ricerca === 'semantica') {
+                if (data.suggerimenti && data.suggerimenti.length > 0) {
+                    html += renderSuggestionButtons(data.suggerimenti);
+                }
+                html += renderResultsPreview(data.risultati);
+            }
+            // Other searches with results
+            else if (!isUser && data && data.risultati && data.risultati.length > 0) {
+                html += renderResultsPreview(data.risultati);
             }
 
             html += '</div>';
             messageDiv.innerHTML = html;
             chatContainer.appendChild(messageDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
+
+            // Attach event listeners for sorting/grouping
+            if (!isUser && data && data.tipo_ricerca === 'diretto') {
+                attachSortingListeners(messageDiv, data.risultati);
+            }
+        }
+
+        function renderDirectResults(results, data) {
+            const searchedName = data.nome_cercato || data.titolo_cercato || '';
+            
+            let html = `
+                <div class="results-section">
+                    <div class="results-header">
+                        <span class="results-count">${results.length} risultati per "${searchedName}"</span>
+                        <div class="results-controls">
+                            <div class="control-group">
+                                <span class="control-label">Ordina:</span>
+                                <select class="control-select sort-select">
+                                    <option value="relevance">Rilevanza</option>
+                                    <option value="year-desc">Anno ↓</option>
+                                    <option value="year-asc">Anno ↑</option>
+                                    <option value="title">Titolo A-Z</option>
+                                </select>
+                            </div>
+                            <div class="control-group">
+                                <span class="control-label">Raggruppa:</span>
+                                <select class="control-select group-select">
+                                    <option value="none">Nessuno</option>
+                                    <option value="decade">Per decennio</option>
+                                    <option value="language">Per lingua</option>
+                                    <option value="type">Per tipo</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="results-list">
+                        ${renderResultsList(results)}
+                    </div>
+                </div>
+            `;
+            return html;
+        }
+
+        function renderResultsList(results, groupBy = 'none') {
+            if (groupBy === 'none') {
+                return results.slice(0, 30).map(book => renderResultItem(book)).join('');
+            }
+
+            // Group results
+            const groups = {};
+            results.forEach(book => {
+                let key;
+                switch(groupBy) {
+                    case 'decade':
+                        const year = parseInt(book.anno) || 0;
+                        const decade = Math.floor(year / 10) * 10;
+                        key = decade ? `Anni ${decade.toString().slice(-2)}` : 'Anno sconosciuto';
+                        break;
+                    case 'language':
+                        key = normalizeLanguage(book.lingua) || 'Lingua n.d.';
+                        break;
+                    case 'type':
+                        key = getTypeLabel(book.tipo);
+                        break;
+                    default:
+                        key = 'Tutti';
+                }
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(book);
+            });
+
+            // Sort groups
+            const sortedKeys = Object.keys(groups).sort((a, b) => {
+                if (groupBy === 'decade') {
+                    return b.localeCompare(a); // Newest first
+                }
+                return groups[b].length - groups[a].length; // Most items first
+            });
+
+            return sortedKeys.map(key => `
+                <div class="results-group" data-group="${key}">
+                    <div class="results-group-header" onclick="toggleGroup(this)">
+                        <span>${key}</span>
+                        <span class="count">(${groups[key].length})</span>
+                    </div>
+                    <div class="results-group-content">
+                        ${groups[key].slice(0, 20).map(book => renderResultItem(book)).join('')}
+                        ${groups[key].length > 20 ? `<div class="result-item" style="text-align:center;color:var(--ibm-gray-60)">...e altri ${groups[key].length - 20}</div>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderResultItem(book) {
+            const typeClass = book.tipo || 'menzione';
+            const typeLabel = getTypeLabel(book.tipo);
+            
+            return `
+                <div class="result-item">
+                    <img src="${book.immagine || ''}" alt="" class="result-item-img" 
+                         onerror="this.style.background='var(--ibm-gray-90)';this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22/>'">
+                    <div class="result-item-info">
+                        <div class="result-item-title">
+                            <a href="${BOOK_URL}/${book.id}" target="_blank">${book.titolo || 'Senza titolo'}</a>
+                            ${typeLabel ? `<span class="result-item-type ${typeClass}">${typeLabel}</span>` : ''}
+                        </div>
+                        <div class="result-item-meta">
+                            ${book.editore || ''} ${book.anno || ''} · ${normalizeLanguage(book.lingua) || ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderFilterButtons(data) {
+            const filters = data.filtri_disponibili;
+            let html = `<div class="filter-buttons">`;
+            html += `<div class="filter-buttons-label">Filtra risultati:</div>`;
+            
+            // Type buttons
+            if (filters.tipi) {
+                html += `<div class="filter-buttons-row">`;
+                if (filters.tipi.monografia > 0) {
+                    html += `<button class="filter-btn" onclick="applyFilter('tipo_pub', 'monografia')">Monografie <span class="count">(${filters.tipi.monografia})</span></button>`;
+                }
+                if (filters.tipi.collettiva > 0) {
+                    html += `<button class="filter-btn" onclick="applyFilter('tipo_pub', 'collettiva')">Collettive <span class="count">(${filters.tipi.collettiva})</span></button>`;
+                }
+                if (filters.tipi.autore > 0) {
+                    html += `<button class="filter-btn" onclick="applyFilter('tipo_pub', 'autore')">Come autore <span class="count">(${filters.tipi.autore})</span></button>`;
+                }
+                html += `</div>`;
+            }
+            
+            // Language buttons
+            if (filters.lingue && Object.keys(filters.lingue).length > 1) {
+                html += `<div class="filter-buttons-row">`;
+                const langNames = {'IT': 'Italiano', 'EN': 'English', 'DE': 'Deutsch', 'FR': 'Français', 'ES': 'Español'};
+                for (const [lang, count] of Object.entries(filters.lingue).slice(0, 5)) {
+                    const langName = langNames[lang] || lang;
+                    html += `<button class="filter-btn" onclick="applyFilter('lingua', '${lang}')">${langName} <span class="count">(${count})</span></button>`;
+                }
+                html += `</div>`;
+            }
+            
+            html += `</div>`;
+            return html;
+        }
+
+        function renderSuggestionButtons(suggestions) {
+            window.currentSuggestions = suggestions;
+            let html = `<div class="filter-buttons">`;
+            html += `<div class="filter-buttons-label">Affina la ricerca:</div>`;
+            html += `<div class="filter-buttons-row">`;
+            suggestions.forEach((suggestion, index) => {
+                html += `<button class="filter-btn suggestion-btn" data-suggestion-index="${index}">${suggestion}</button>`;
+            });
+            html += `</div></div>`;
+            return html;
+        }
+
+        function renderResultsPreview(results) {
+            if (!results || results.length === 0) return '';
+            
+            return `
+                <div class="results-preview">
+                    <div class="results-preview-title">${results.length} risultati trovati</div>
+                    <div class="results-mini-grid">
+                        ${results.slice(0, 5).map(book => `
+                            <a href="${BOOK_URL}/${book.id}" target="_blank" class="result-mini-card">
+                                <img src="${book.immagine || ''}" alt="" class="result-mini-img" onerror="this.style.display='none'">
+                                <div class="result-mini-title">${truncate(book.titolo, 50)}</div>
+                            </a>
+                        `).join('')}
+                    </div>
+                    ${results.length > 5 ? `<button class="show-all-btn" onclick="showAllResults()">Mostra tutti (${results.length})</button>` : ''}
+                </div>
+            `;
+        }
+
+        // ============ SORTING & GROUPING ============
+
+        function attachSortingListeners(messageDiv, originalResults) {
+            const sortSelect = messageDiv.querySelector('.sort-select');
+            const groupSelect = messageDiv.querySelector('.group-select');
+            const resultsList = messageDiv.querySelector('.results-list');
+
+            if (!sortSelect || !groupSelect || !resultsList) return;
+
+            let currentResults = [...originalResults];
+
+            function updateResults() {
+                const sortBy = sortSelect.value;
+                const groupBy = groupSelect.value;
+
+                // Sort
+                let sorted = [...originalResults];
+                switch(sortBy) {
+                    case 'year-desc':
+                        sorted.sort((a, b) => (parseInt(b.anno) || 0) - (parseInt(a.anno) || 0));
+                        break;
+                    case 'year-asc':
+                        sorted.sort((a, b) => (parseInt(a.anno) || 0) - (parseInt(b.anno) || 0));
+                        break;
+                    case 'title':
+                        sorted.sort((a, b) => (a.titolo || '').localeCompare(b.titolo || ''));
+                        break;
+                    // 'relevance' keeps original order
+                }
+
+                currentResults = sorted;
+                resultsList.innerHTML = renderResultsList(sorted, groupBy);
+            }
+
+            sortSelect.addEventListener('change', updateResults);
+            groupSelect.addEventListener('change', updateResults);
+        }
+
+        function toggleGroup(header) {
+            const content = header.nextElementSibling;
+            content.classList.toggle('collapsed');
+        }
+
+        // ============ UTILITIES ============
+
+        function normalizeLanguage(lang) {
+            if (!lang) return '';
+            const upper = lang.trim().toUpperCase();
+            const map = {
+                'I': 'IT', 'ITA': 'IT', 'ITALIANO': 'IT',
+                'E': 'EN', 'ENG': 'EN', 'ENGLISH': 'EN',
+                'D': 'DE', 'DEU': 'DE', 'DEUTSCH': 'DE',
+                'F': 'FR', 'FRA': 'FR', 'FRANCAIS': 'FR',
+                'FRANÇAIS': 'FR'
+            };
+            return map[upper] || upper;
+        }
+
+        function getTypeLabel(tipo) {
+            const labels = {
+                'monografia_titolo': 'Monografia',
+                'monografia': 'Monografia',
+                'collettiva': 'Collettiva',
+                'autore': 'Come autore',
+                'menzione': 'Citazione'
+            };
+            return labels[tipo] || '';
+        }
+
+        function truncate(text, length) {
+            if (!text) return '';
+            return text.length > length ? text.substring(0, length) + '...' : text;
+        }
+
+        // ============ SEARCH FUNCTIONS ============
+
+        async function sendMessage() {
+            const rawQuery = chatInput.value.trim();
+            if (!rawQuery) return;
+
+            const parsed = parseQuery(rawQuery);
+            hideAutocomplete();
+
+            // Add user message
+            addMessage(parsed.display, true, { searchType: parsed.type !== 'ai' ? parsed.type : null });
+            chatInput.value = '';
+            chatInput.classList.remove('mode-artist', 'mode-author', 'mode-title');
+            sendBtn.disabled = true;
+
+            addTypingIndicator();
+
+            try {
+                let response, data;
+
+                if (parsed.type === 'artist' || parsed.type === 'author') {
+                    // Direct search - skip AI, just SQL
+                    response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            query: parsed.value,
+                            searchType: parsed.type,  // 'artist' o 'author'
+                            limit: 100,
+                            direct: true
+                        })
+                    });
+                    
+                    data = await response.json();
+                    data.tipo_ricerca = 'diretto';
+                    
+                    // Generate simple response text
+                    const count = data.risultati?.length || 0;
+                    const typeText = parsed.type === 'artist' ? 'artista' : 'autore';
+                    data.risposta = count > 0 
+                        ? `${count} risultati per ${typeText} "${parsed.value}".`
+                        : `Nessun risultato per ${typeText} "${parsed.value}".`;
+
+                } else if (parsed.type === 'title') {
+                    // Title search
+                    response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            query: parsed.value,
+                            searchType: 'title',
+                            limit: 50,
+                            direct: true
+                        })
+                    });
+                    
+                    data = await response.json();
+                    data.tipo_ricerca = 'diretto';
+                    
+                    const count = data.risultati?.length || 0;
+                    data.risposta = count > 0 
+                        ? `${count} risultati per titolo "${parsed.value}".`
+                        : `Nessun libro trovato con titolo "${parsed.value}".`;
+
+                } else {
+                    // AI semantic search (existing flow)
+                    const requestBody = {
+                        query: parsed.value,
+                        limit: 50
+                    };
+
+                    if (conversationContext.lastSearch) {
+                        requestBody.context = {
+                            previousSearch: conversationContext.lastSearch,
+                            previousFilters: conversationContext.lastFilters
+                        };
+                    }
+
+                    response = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(requestBody)
+                    });
+
+                    data = await response.json();
+                }
+
+                if (data.error) throw new Error(data.error);
+
+                // Update context
+                conversationContext.lastSearch = data.nome_cercato || data.titolo_cercato || parsed.value;
+                conversationContext.lastResults = data.risultati || [];
+                conversationContext.lastFilters = data.filtri || {};
+                conversationContext.searchType = parsed.type;
+
+                removeTypingIndicator();
+                addMessage(data.risposta, false, data);
+
+            } catch (error) {
+                removeTypingIndicator();
+                addMessage('Mi dispiace, c\'è stato un errore. Riprova.', false);
+                console.error('Error:', error);
+            } finally {
+                sendBtn.disabled = false;
+                chatInput.focus();
+            }
         }
 
         async function applyFilter(filterType, filterValue) {
-            // Applica filtro alla ricerca corrente senza usare Claude
             if (!conversationContext.lastSearch) return;
             
-            // Aggiorna filtri
             conversationContext.lastFilters[filterType] = filterValue;
             
-            // Mostra messaggio utente
             const filterNames = {
                 'tipo_pub': {'monografia': 'solo monografie', 'collettiva': 'solo collettive', 'autore': 'come autore'},
                 'lingua': {'IT': 'in italiano', 'EN': 'in inglese', 'DE': 'in tedesco', 'FR': 'in francese'}
@@ -724,7 +1517,6 @@
             const filterText = filterNames[filterType]?.[filterValue] || `${filterType}: ${filterValue}`;
             addMessage(filterText, true);
             
-            // Show typing
             addTypingIndicator();
             
             try {
@@ -739,7 +1531,6 @@
                 });
                 
                 const data = await response.json();
-                
                 conversationContext.lastResults = data.risultati || [];
                 
                 removeTypingIndicator();
@@ -750,16 +1541,11 @@
                 addMessage('Errore nell\'applicare il filtro.', false);
             }
         }
-        
+
         async function applySuggestion(suggestion) {
-            // Mostra messaggio utente
             addMessage(suggestion, true);
-            
-            // Show typing
             addTypingIndicator();
             
-            // REFINEMENT PRIMA, query originale DOPO
-            // Così la ricerca semantica dà priorità al suggerimento
             const combinedQuery = suggestion + ' ' + conversationContext.lastSearch;
             
             try {
@@ -777,7 +1563,6 @@
                 
                 const data = await response.json();
                 
-                // Aggiorna contesto
                 conversationContext.lastSearch = combinedQuery;
                 conversationContext.lastResults = data.risultati || [];
                 
@@ -789,6 +1574,8 @@
                 addMessage('Errore nella ricerca.', false);
             }
         }
+
+        // ============ UI HELPERS ============
 
         function addTypingIndicator() {
             const typingDiv = document.createElement('div');
@@ -818,7 +1605,7 @@
                     <img src="${book.immagine || ''}" alt="" class="result-card-img" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23e0e0e0%22 width=%22100%22 height=%22100%22/></svg>'">
                     <div class="result-card-body">
                         <div class="result-card-title">
-                            <a href="https://test01-frontend.vercel.app/books/${book.id}" target="_blank">${book.titolo || 'Senza titolo'}</a>
+                            <a href="${BOOK_URL}/${book.id}" target="_blank">${book.titolo || 'Senza titolo'}</a>
                         </div>
                         <div class="result-card-meta">${book.editore || ''} ${book.anno || ''}</div>
                     </div>
@@ -828,179 +1615,101 @@
             resultsModal.classList.add('visible');
         }
 
-        async function sendMessage() {
-            const query = chatInput.value.trim();
-            if (!query) return;
-
-            // Controlla se è un filtro temporale sui risultati esistenti
-            const yearFilterMatch = query.match(/(?:prima|before|fino|until|entro)\s+(?:del|al|il)?\s*(\d{4})/i) ||
-                                   query.match(/(?:dopo|after|dal|from|since)\s+(?:del|il)?\s*(\d{4})/i) ||
-                                   query.match(/(?:anno|year)\s*(\d{4})/i) ||
-                                   query.match(/(\d{4})\s*[-–]\s*(\d{4})/);
-            
-            // Controlla se è un filtro per decennio
-            const decadeMatch = query.match(/(?:anni|years?)\s*['']?(\d{2})(?:s)?/i) ||  // "anni 60", "anni '70", "years 80s"
-                               query.match(/(\d{2})['']?s/i) ||  // "60s", "70's"
-                               query.match(/(?:anni|years?)\s+(\d{4})/i);  // "anni 1960"
-            
-            if ((yearFilterMatch || decadeMatch) && conversationContext.lastResults && conversationContext.lastResults.length > 0) {
-                let filteredResults;
-                let filterDesc;
-                
-                if (decadeMatch) {
-                    // Gestione decenni
-                    let decadeNum = decadeMatch[1];
-                    // Converti "60" in 1960, "1960" resta 1960
-                    if (decadeNum.length === 2) {
-                        decadeNum = (parseInt(decadeNum) < 30 ? 2000 : 1900) + parseInt(decadeNum);
-                    } else {
-                        decadeNum = parseInt(decadeNum);
-                    }
-                    const decadeStart = Math.floor(decadeNum / 10) * 10;
-                    const decadeEnd = decadeStart + 9;
-                    
-                    filteredResults = conversationContext.lastResults.filter(book => {
-                        const bookYear = parseInt(book.anno);
-                        return bookYear >= decadeStart && bookYear <= decadeEnd;
-                    });
-                    filterDesc = `degli anni ${decadeStart.toString().slice(-2)}`;
-                } else if (yearFilterMatch) {
-                    const isBefore = /prima|before|fino|until|entro/i.test(query);
-                    const isAfter = /dopo|after|dal|from|since/i.test(query);
-                    const isRange = query.match(/(\d{4})\s*[-–]\s*(\d{4})/);
-                    
-                    if (isRange) {
-                        const yearStart = parseInt(isRange[1]);
-                        const yearEnd = parseInt(isRange[2]);
-                        filteredResults = conversationContext.lastResults.filter(book => {
-                            const bookYear = parseInt(book.anno);
-                            return bookYear >= yearStart && bookYear <= yearEnd;
-                        });
-                        filterDesc = `tra il ${yearStart} e il ${yearEnd}`;
-                    } else {
-                        const year = parseInt(yearFilterMatch[1]);
-                        if (isBefore) {
-                            filteredResults = conversationContext.lastResults.filter(book => {
-                                const bookYear = parseInt(book.anno);
-                                return bookYear && bookYear < year;
-                            });
-                            filterDesc = `prima del ${year}`;
-                        } else if (isAfter) {
-                            filteredResults = conversationContext.lastResults.filter(book => {
-                                const bookYear = parseInt(book.anno);
-                                return bookYear && bookYear >= year;
-                            });
-                            filterDesc = `dal ${year} in poi`;
-                        } else {
-                            filteredResults = conversationContext.lastResults.filter(book => {
-                                return book.anno && book.anno.toString() === year.toString();
-                            });
-                            filterDesc = `del ${year}`;
-                        }
-                    }
-                }
-                
-                // Mostra messaggio utente
-                addMessage(query, true);
-                chatInput.value = '';
-                
-                // Aggiorna risultati
-                conversationContext.lastResults = filteredResults;
-                
-                // Genera risposta semplice
-                const risposta = filteredResults.length > 0 
-                    ? `${filteredResults.length} risultati ${filterDesc}.`
-                    : `Nessun risultato ${filterDesc} nella selezione corrente.`;
-                
-                addMessage(risposta, false, {
-                    risultati: filteredResults,
-                    suggerimenti: []
-                });
-                
-                return;
-            }
-
-            // Add user message
-            addMessage(query, true);
-            chatInput.value = '';
-            sendBtn.disabled = true;
-
-            // Show typing indicator
-            addTypingIndicator();
-
-            try {
-                // Build request with context
-                const requestBody = {
-                    query: query,
-                    limit: 50
-                };
-
-                // If we have context, add it to help refine the search
-                if (conversationContext.lastSearch) {
-                    requestBody.context = {
-                        previousSearch: conversationContext.lastSearch,
-                        previousFilters: conversationContext.lastFilters
-                    };
-                }
-
-                const response = await fetch(API_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(requestBody)
-                });
-
-                if (!response.ok) throw new Error('Errore nella ricerca');
-
-                const data = await response.json();
-                if (data.error) throw new Error(data.error);
-
-                // Update context
-                conversationContext.lastSearch = data.nome_cercato || data.titolo_cercato || query;
-                conversationContext.lastResults = data.risultati || [];
-                conversationContext.lastFilters = data.filtri || {};
-
-                // Remove typing and add response with full data (for filter buttons)
-                removeTypingIndicator();
-                addMessage(data.risposta, false, data);
-
-            } catch (error) {
-                removeTypingIndicator();
-                addMessage('Mi dispiace, c\'è stato un errore. Riprova.', false);
-                console.error('Error:', error);
-            } finally {
-                sendBtn.disabled = false;
-                chatInput.focus();
-            }
-        }
-
         function resetConversation() {
             conversationContext = {
                 lastSearch: null,
                 lastResults: [],
-                lastFilters: {}
+                lastFilters: {},
+                searchType: null
             };
             chatContainer.innerHTML = `
                 <div class="welcome-message" id="welcomeMessage">
                     <div class="welcome-icon">[ ]</div>
-                    <p>Cerca un artista, un tema o chiedi un consiglio. Posso aiutarti a trovare libri nel catalogo.</p>
+                    <p>Cerca un artista, un tema o chiedi un consiglio. Usa i prefissi per ricerche dirette.</p>
+                    <div class="welcome-examples">
+                        <button class="welcome-example artist" onclick="setExample('@Bruce Nauman')">@Bruce Nauman</button>
+                        <button class="welcome-example author" onclick="setExample('#Germano Celant')">#Germano Celant</button>
+                        <button class="welcome-example title" onclick="setExample('&quot;When attitudes become form&quot')">"When attitudes..."</button>
+                        <button class="welcome-example" onclick="setExample('fotografia giapponese')">fotografia giapponese</button>
+                    </div>
                 </div>
             `;
         }
 
-        function truncate(text, length) {
-            if (!text) return '';
-            return text.length > length ? text.substring(0, length) + '...' : text;
+        function setExample(text) {
+            chatInput.value = text;
+            chatInput.focus();
+            updateInputStyle();
         }
 
-        // Event listeners
+        // ============ EVENT LISTENERS ============
+
         sendBtn.addEventListener('click', sendMessage);
-        chatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') sendMessage();
+        
+        chatInput.addEventListener('keydown', (e) => {
+            // Handle autocomplete navigation
+            if (autocompleteDropdown.classList.contains('visible')) {
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    selectedAutocompleteIndex = Math.min(selectedAutocompleteIndex + 1, autocompleteData.length - 1);
+                    showAutocomplete();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    selectedAutocompleteIndex = Math.max(selectedAutocompleteIndex - 1, 0);
+                    showAutocomplete();
+                } else if (e.key === 'Enter' && selectedAutocompleteIndex >= 0) {
+                    e.preventDefault();
+                    selectAutocomplete(selectedAutocompleteIndex);
+                    return;
+                } else if (e.key === 'Escape') {
+                    hideAutocomplete();
+                    return;
+                }
+            }
+            
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
         });
+
+        chatInput.addEventListener('input', () => {
+            updateInputStyle();
+            
+            // Trigger autocomplete for @ and #
+            const value = chatInput.value;
+            const mode = getInputMode();
+            
+            if (mode === 'artist' || mode === 'author') {
+                const query = value.slice(1); // Remove prefix
+                
+                clearTimeout(autocompleteTimeout);
+                autocompleteTimeout = setTimeout(() => {
+                    fetchSuggestions(mode === 'artist' ? 'artist' : 'author', query);
+                }, 150);
+            } else {
+                hideAutocomplete();
+            }
+        });
+
+        chatInput.addEventListener('blur', () => {
+            // Delay to allow click on autocomplete
+            setTimeout(hideAutocomplete, 200);
+        });
+
+        autocompleteDropdown.addEventListener('click', (e) => {
+            const item = e.target.closest('.autocomplete-item');
+            if (item) {
+                selectAutocomplete(parseInt(item.dataset.index));
+            }
+        });
+
         newSearchBtn.addEventListener('click', resetConversation);
+        
         closeModal.addEventListener('click', () => {
             resultsModal.classList.remove('visible');
         });
+        
         resultsModal.addEventListener('click', (e) => {
             if (e.target === resultsModal) {
                 resultsModal.classList.remove('visible');
@@ -1016,6 +1725,12 @@
                 }
             }
         });
+
+        // Make toggleGroup global for onclick
+        window.toggleGroup = toggleGroup;
+        window.setExample = setExample;
+        window.applyFilter = applyFilter;
+        window.showAllResults = showAllResults;
     </script>
 </body>
 </html>
