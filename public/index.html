@@ -167,6 +167,10 @@
             background: var(--title-color);
         }
 
+        .message-user .message-content.has-image {
+            background: var(--terminal-green);
+        }
+
         .message-bot {
             display: flex;
             flex-direction: column;
@@ -629,6 +633,87 @@
             border-color: var(--title-color);
         }
 
+        .chat-input.mode-image {
+            border-color: var(--terminal-green);
+        }
+
+        /* Camera button */
+        .camera-btn {
+            padding: 0.875rem;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.8rem;
+            background: transparent;
+            border: 2px solid var(--ibm-gray-30);
+            color: var(--ibm-gray-30);
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .camera-btn:hover {
+            border-color: var(--terminal-green);
+            color: var(--terminal-green);
+        }
+
+        .camera-btn.has-image {
+            border-color: var(--terminal-green);
+            background: var(--terminal-green);
+            color: white;
+        }
+
+        .camera-btn svg {
+            width: 20px;
+            height: 20px;
+        }
+
+        /* Image preview */
+        .image-preview-container {
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            padding: 0.5rem;
+            background: var(--ibm-gray-100);
+            border: 1px solid var(--terminal-green);
+            border-radius: 4px;
+        }
+
+        .image-preview-container.visible {
+            display: flex;
+        }
+
+        .image-preview-thumb {
+            width: 50px;
+            height: 65px;
+            object-fit: cover;
+            border-radius: 2px;
+            border: 1px solid var(--ibm-gray-80);
+        }
+
+        .image-preview-info {
+            flex: 1;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            color: var(--terminal-green);
+        }
+
+        .image-preview-remove {
+            background: none;
+            border: none;
+            color: var(--ibm-gray-60);
+            cursor: pointer;
+            font-size: 1.25rem;
+            padding: 0.25rem;
+            line-height: 1;
+        }
+
+        .image-preview-remove:hover {
+            color: var(--title-color);
+        }
+
         .send-btn {
             padding: 0.875rem 1.5rem;
             font-family: 'IBM Plex Mono', monospace;
@@ -744,6 +829,7 @@
         .hint-syntax .prefix.artist { color: var(--artist-color); }
         .hint-syntax .prefix.author { color: var(--author-color); }
         .hint-syntax .prefix.title { color: var(--title-color); }
+        .hint-syntax .prefix.image { color: var(--terminal-green); }
 
         .new-search-btn {
             font-family: 'IBM Plex Mono', monospace;
@@ -819,6 +905,11 @@
             color: var(--title-color);
         }
 
+        .welcome-example.image {
+            border-color: var(--terminal-green);
+            color: var(--terminal-green);
+        }
+
         /* Loading */
         .typing-indicator {
             display: flex;
@@ -842,6 +933,16 @@
             50% { opacity: 1; }
         }
 
+        /* Message with image thumbnail */
+        .message-image-thumb {
+            width: 40px;
+            height: 50px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-right: 0.5rem;
+            vertical-align: middle;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
             .message-user .message-content,
@@ -863,6 +964,10 @@
 
             .results-controls {
                 flex-wrap: wrap;
+            }
+
+            .camera-btn {
+                padding: 0.875rem 0.75rem;
             }
         }
     </style>
@@ -894,12 +999,13 @@
             <div class="chat-container" id="chatContainer">
                 <div class="welcome-message" id="welcomeMessage">
                     <div class="welcome-icon">[ ]</div>
-                    <p>Cerca un artista, un tema o chiedi un consiglio. Usa i prefissi per ricerche dirette.</p>
+                    <p>Cerca un artista, un tema o chiedi un consiglio. Usa i prefissi per ricerche dirette, o scatta una foto a una copertina.</p>
                     <div class="welcome-examples">
                         <button class="welcome-example artist" onclick="setExample('@Bruce Nauman')">@Bruce Nauman</button>
                         <button class="welcome-example author" onclick="setExample('#Germano Celant')">#Germano Celant</button>
                         <button class="welcome-example title" onclick="setExample('&quot;When attitudes become form&quot')">"When attitudes..."</button>
                         <button class="welcome-example" onclick="setExample('fotografia giapponese')">fotografia giapponese</button>
+                        <button class="welcome-example image" onclick="triggerImageUpload()">📷 Foto copertina</button>
                     </div>
                 </div>
             </div>
@@ -908,13 +1014,33 @@
 
     <div class="input-area">
         <div class="container">
+            <!-- Image preview -->
+            <div class="image-preview-container" id="imagePreviewContainer">
+                <img id="imagePreviewThumb" class="image-preview-thumb" src="" alt="Preview">
+                <div class="image-preview-info">
+                    📷 Foto copertina allegata
+                </div>
+                <button class="image-preview-remove" id="removeImageBtn" title="Rimuovi immagine">&times;</button>
+            </div>
+            
             <div class="input-wrapper">
                 <div class="input-box">
+                    <!-- Hidden file input -->
+                    <input type="file" id="imageInput" accept="image/*" capture="environment" style="display: none;">
+                    
+                    <!-- Camera button -->
+                    <button class="camera-btn" id="cameraBtn" title="Cerca con foto copertina">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                            <circle cx="12" cy="13" r="4"/>
+                        </svg>
+                    </button>
+                    
                     <input 
                         type="text" 
                         class="chat-input" 
                         id="chatInput" 
-                        placeholder="Scrivi qui..."
+                        placeholder="Scrivi qui o scatta una foto..."
                         autocomplete="off"
                         autofocus
                     >
@@ -927,6 +1053,7 @@
                     <span><span class="prefix artist">@</span> artista</span>
                     <span><span class="prefix author">#</span> autore</span>
                     <span><span class="prefix title">"..."</span> titolo</span>
+                    <span><span class="prefix image">📷</span> foto</span>
                 </div>
                 <button class="new-search-btn" id="newSearchBtn">Nuova ricerca</button>
             </div>
@@ -954,13 +1081,16 @@
             lastSearch: null,
             lastResults: [],
             lastFilters: {},
-            searchType: null  // 'direct-artist', 'direct-author', 'direct-title', 'ai'
+            searchType: null  // 'direct-artist', 'direct-author', 'direct-title', 'ai', 'image'
         };
 
         // Autocomplete state
         let autocompleteData = [];
         let selectedAutocompleteIndex = -1;
         let autocompleteTimeout = null;
+
+        // Image state
+        let selectedImageBase64 = null;
 
         const chatContainer = document.getElementById('chatContainer');
         const chatInput = document.getElementById('chatInput');
@@ -971,6 +1101,64 @@
         const resultsModalGrid = document.getElementById('resultsModalGrid');
         const closeModal = document.getElementById('closeModal');
         const autocompleteDropdown = document.getElementById('autocompleteDropdown');
+        
+        // Image elements
+        const imageInput = document.getElementById('imageInput');
+        const cameraBtn = document.getElementById('cameraBtn');
+        const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+        const imagePreviewThumb = document.getElementById('imagePreviewThumb');
+        const removeImageBtn = document.getElementById('removeImageBtn');
+
+        // ============ IMAGE HANDLING ============
+
+        function triggerImageUpload() {
+            imageInput.click();
+        }
+
+        cameraBtn.addEventListener('click', triggerImageUpload);
+
+        imageInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Check file size (max 5MB)
+            if (file.size > 5 * 1024 * 1024) {
+                alert('Immagine troppo grande. Massimo 5MB.');
+                return;
+            }
+
+            // Convert to base64
+            const base64 = await fileToBase64(file);
+            selectedImageBase64 = base64;
+
+            // Show preview
+            imagePreviewThumb.src = base64;
+            imagePreviewContainer.classList.add('visible');
+            cameraBtn.classList.add('has-image');
+            chatInput.classList.add('mode-image');
+            chatInput.placeholder = 'Aggiungi una nota (opzionale)...';
+            chatInput.focus();
+        });
+
+        removeImageBtn.addEventListener('click', clearImage);
+
+        function clearImage() {
+            selectedImageBase64 = null;
+            imageInput.value = '';
+            imagePreviewContainer.classList.remove('visible');
+            cameraBtn.classList.remove('has-image');
+            chatInput.classList.remove('mode-image');
+            chatInput.placeholder = 'Scrivi qui o scatta una foto...';
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
 
         // ============ QUERY PARSING ============
 
@@ -1015,6 +1203,7 @@
 
         function getInputMode() {
             const value = chatInput.value;
+            if (selectedImageBase64) return 'image';
             if (value.startsWith('@')) return 'artist';
             if (value.startsWith('#')) return 'author';
             if (value.startsWith('"') || value.startsWith('«')) return 'title';
@@ -1023,7 +1212,7 @@
 
         function updateInputStyle() {
             const mode = getInputMode();
-            chatInput.classList.remove('mode-artist', 'mode-author', 'mode-title');
+            chatInput.classList.remove('mode-artist', 'mode-author', 'mode-title', 'mode-image');
             if (mode) {
                 chatInput.classList.add(`mode-${mode}`);
             }
@@ -1115,8 +1304,18 @@
             if (isUser && data?.searchType) {
                 contentClass = `direct-${data.searchType}`;
             }
+            if (isUser && data?.hasImage) {
+                contentClass = 'has-image';
+            }
 
-            let html = `<div class="message-content ${contentClass}">${content}`;
+            let html = `<div class="message-content ${contentClass}">`;
+            
+            // Add image thumbnail for user messages with images
+            if (isUser && data?.imageThumb) {
+                html += `<img src="${data.imageThumb}" class="message-image-thumb" alt="Copertina">`;
+            }
+            
+            html += content;
 
             // For direct searches, show sortable results
             if (!isUser && data && data.tipo_ricerca === 'diretto' && data.risultati) {
@@ -1401,15 +1600,31 @@
 
         async function sendMessage() {
             const rawQuery = chatInput.value.trim();
-            if (!rawQuery) return;
+            const hasImage = !!selectedImageBase64;
+            
+            // Allow sending with just an image (no text required)
+            if (!rawQuery && !hasImage) return;
 
             const parsed = parseQuery(rawQuery);
             hideAutocomplete();
 
+            // Build display text
+            let displayText = parsed.display || '';
+            if (hasImage && !displayText) {
+                displayText = '📷 Cerca per copertina';
+            } else if (hasImage) {
+                displayText = '📷 ' + displayText;
+            }
+
             // Add user message
-            addMessage(parsed.display, true, { searchType: parsed.type !== 'ai' ? parsed.type : null });
+            addMessage(displayText, true, { 
+                searchType: hasImage ? 'image' : (parsed.type !== 'ai' ? parsed.type : null),
+                hasImage: hasImage,
+                imageThumb: hasImage ? selectedImageBase64 : null
+            });
+            
             chatInput.value = '';
-            chatInput.classList.remove('mode-artist', 'mode-author', 'mode-title');
+            chatInput.classList.remove('mode-artist', 'mode-author', 'mode-title', 'mode-image');
             sendBtn.disabled = true;
 
             addTypingIndicator();
@@ -1462,11 +1677,16 @@
                         : `Nessun libro trovato con titolo "${parsed.value}".`;
 
                 } else {
-                    // AI semantic search (existing flow)
+                    // AI semantic search (with optional image)
                     const requestBody = {
                         query: parsed.value,
                         limit: 50
                     };
+
+                    // Add image if present
+                    if (hasImage) {
+                        requestBody.image = selectedImageBase64;
+                    }
 
                     if (conversationContext.lastSearch) {
                         requestBody.context = {
@@ -1490,7 +1710,7 @@
                 conversationContext.lastSearch = data.nome_cercato || data.titolo_cercato || parsed.value;
                 conversationContext.lastResults = data.risultati || [];
                 conversationContext.lastFilters = data.filtri || {};
-                conversationContext.searchType = parsed.type;
+                conversationContext.searchType = hasImage ? 'image' : parsed.type;
 
                 removeTypingIndicator();
                 addMessage(data.risposta, false, data);
@@ -1502,6 +1722,11 @@
             } finally {
                 sendBtn.disabled = false;
                 chatInput.focus();
+                
+                // Clear image after sending
+                if (hasImage) {
+                    clearImage();
+                }
             }
         }
 
@@ -1622,15 +1847,17 @@
                 lastFilters: {},
                 searchType: null
             };
+            clearImage();
             chatContainer.innerHTML = `
                 <div class="welcome-message" id="welcomeMessage">
                     <div class="welcome-icon">[ ]</div>
-                    <p>Cerca un artista, un tema o chiedi un consiglio. Usa i prefissi per ricerche dirette.</p>
+                    <p>Cerca un artista, un tema o chiedi un consiglio. Usa i prefissi per ricerche dirette, o scatta una foto a una copertina.</p>
                     <div class="welcome-examples">
                         <button class="welcome-example artist" onclick="setExample('@Bruce Nauman')">@Bruce Nauman</button>
                         <button class="welcome-example author" onclick="setExample('#Germano Celant')">#Germano Celant</button>
                         <button class="welcome-example title" onclick="setExample('&quot;When attitudes become form&quot')">"When attitudes..."</button>
                         <button class="welcome-example" onclick="setExample('fotografia giapponese')">fotografia giapponese</button>
+                        <button class="welcome-example image" onclick="triggerImageUpload()">📷 Foto copertina</button>
                     </div>
                 </div>
             `;
@@ -1726,11 +1953,12 @@
             }
         });
 
-        // Make toggleGroup global for onclick
+        // Make functions global for onclick
         window.toggleGroup = toggleGroup;
         window.setExample = setExample;
         window.applyFilter = applyFilter;
         window.showAllResults = showAllResults;
+        window.triggerImageUpload = triggerImageUpload;
     </script>
 </body>
 </html>

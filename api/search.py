@@ -248,8 +248,14 @@ def search_direct_title(title: str, limit: int = 50) -> dict:
 
 # ============ AI-POWERED SEARCH (existing) ============
 
-def extract_name_from_query(query: str, context: dict = None) -> dict:
-    """Usa Claude per estrarre nomi di artisti/autori, titoli e filtri dalla query."""
+def extract_name_from_query(query: str, context: dict = None, image_base64: str = None) -> dict:
+    """Usa Claude per estrarre nomi di artisti/autori, titoli e filtri dalla query.
+    
+    Args:
+        query: Testo della query utente
+        context: Contesto conversazione precedente
+        image_base64: Immagine in base64 (opzionale) - foto copertina libro
+    """
     
     context = context or {}
     context_info = ""
@@ -264,12 +270,49 @@ Se l'utente sta raffinando la ricerca precedente (es. "solo in inglese", "mostra
 mantieni il nome della ricerca precedente e aggiungi/modifica i filtri.
 """
     
-    response = claude.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=300,
-        messages=[{
-            "role": "user",
-            "content": f"""Analizza questa query di ricerca libri: "{query}"
+    # Costruisci il contenuto del messaggio (supporta testo + immagine)
+    content = []
+    
+    # Se c'è un'immagine, aggiungila prima
+    if image_base64:
+        # Rimuovi eventuale prefisso data:image/...;base64,
+        if ',' in image_base64:
+            image_base64 = image_base64.split(',')[1]
+        
+        content.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/jpeg",
+                "data": image_base64
+            }
+        })
+        
+        # Prompt per ricerca con immagine
+        text_prompt = f"""Stai analizzando una FOTO DI COPERTINA di un libro d'arte.
+
+Esamina attentamente l'immagine ed estrai:
+- Titolo del libro (spesso in grande sulla copertina)
+- Nome artista/autore (spesso sotto il titolo o in alto)
+- Editore (spesso in basso o sul dorso)
+- Qualsiasi altro testo visibile utile
+
+{f'Nota aggiuntiva dall\'utente: "{query}"' if query and query.strip() else ''}
+{context_info}
+
+Rispondi SOLO con un oggetto JSON valido:
+- tipo: "titolo" (se hai identificato un titolo specifico) o "nome" (se hai identificato principalmente un artista/autore)
+- titolo: "titolo letto dalla copertina" (se tipo=titolo)
+- nome: "Nome Cognome" (se tipo=nome, o se hai letto un nome artista)
+- editore: "nome editore" (se visibile)
+
+Se non riesci a leggere nulla di utile, rispondi con:
+{{"tipo": "errore", "messaggio": "Non riesco a leggere il testo sulla copertina"}}
+
+JSON:"""
+    else:
+        # Prompt originale per ricerca testuale
+        text_prompt = f"""Analizza questa query di ricerca libri: "{query}"
 {context_info}
 Estrai:
 1. Se cerca un TITOLO SPECIFICO di libro (es. "hai il libro X", "cerco il catalogo Y", titolo tra virgolette)
@@ -295,6 +338,15 @@ Esempi:
 "fotografia giapponese anni 70" → {{"tipo": "tematica", "tema": "fotografia giapponese", "anno_min": 1970, "anno_max": 1979}}
 
 JSON:"""
+    
+    content.append({"type": "text", "text": text_prompt})
+    
+    response = claude.messages.create(
+        model="claude-sonnet-4-20250514",
+        max_tokens=300,
+        messages=[{
+            "role": "user",
+            "content": content
         }]
     )
     
@@ -306,6 +358,10 @@ JSON:"""
                 text = text[4:]
         text = text.strip()
         result = json.loads(text)
+        
+        # Gestione errore lettura immagine
+        if result.get('tipo') == 'errore':
+            return {"tipo": "tematica", "tema": query or "ricerca generica"}
         
         if result.get('tipo') == 'followup' and context.get('previousSearch'):
             if not result.get('nome') or result.get('nome') == '[nome precedente]':
@@ -319,7 +375,7 @@ JSON:"""
         
         return result
     except:
-        return {"tipo": "tematica", "tema": query}
+        return {"tipo": "tematica", "tema": query or "ricerca generica"}
 
 def generate_refined_response(refinement: str, results: list, original_query: str) -> str:
     """Genera risposta breve per ricerca affinata."""
@@ -937,8 +993,10 @@ class handler(BaseHTTPRequestHandler):
             search_type = data.get('searchType', None)
             direct_filters = data.get('filters', None)
             mode = data.get('mode', None)
+            image_base64 = data.get('image', None)  # NEW: supporto immagine
             
-            if not query:
+            # Se c'è un'immagine ma nessuna query, imposta query vuota (non errore)
+            if not query and not image_base64:
                 self.wfile.write(json.dumps({"error": "Query richiesta"}).encode())
                 return
             
@@ -1041,9 +1099,9 @@ class handler(BaseHTTPRequestHandler):
                 }, default=str).encode())
                 return
             
-            # AI-powered search (existing)
+            # AI-powered search (existing) - ORA CON SUPPORTO IMMAGINE
             context = data.get('context', {})
-            query_info = extract_name_from_query(query, context)
+            query_info = extract_name_from_query(query, context, image_base64)  # MODIFICATO: passa immagine
             
             if query_info.get('tipo') == 'titolo':
                 title = query_info['titolo']
