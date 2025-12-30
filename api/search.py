@@ -6,6 +6,10 @@ from urllib.parse import parse_qs, urlparse
 import voyageai
 import anthropic
 import re
+import imagehash
+from PIL import Image
+from io import BytesIO
+import base64
 
 # Clients
 vo = voyageai.Client(api_key=os.environ.get("VOYAGE_API_KEY"))
@@ -13,6 +17,162 @@ claude = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
 def get_db():
     return psycopg2.connect(os.environ.get("NEON_DATABASE_URL"))
+
+# ============ IMAGE HASH FUNCTIONS (NEW) ============
+
+def compute_image_hash(image_base64: str) -> str:
+    """Calcola l'hash percettivo di un'immagine in base64."""
+    try:
+        if ',' in image_base64:
+            image_base64 = image_base64.split(',')[1]
+        
+        image_data = base64.b64decode(image_base64)
+        img = Image.open(BytesIO(image_data))
+        hash_value = str(imagehash.average_hash(img))
+        img.close()
+        return hash_value
+    except Exception as e:
+        print(f"Errore calcolo hash: {e}")
+        return None
+
+def compare_hashes(hash1: str, hash2: str) -> int:
+    """Confronta due hash e restituisce la distanza di Hamming."""
+    if not hash1 or not hash2:
+        return 999
+    try:
+        h1 = imagehash.hex_to_hash(hash1)
+        h2 = imagehash.hex_to_hash(hash2)
+        return h1 - h2
+    except:
+        return 999
+
+def search_by_image_hybrid(query_info: dict, image_base64: str, limit: int = 50) -> dict:
+    """Ricerca ibrida: combina ricerca testuale + confronto hash immagine."""
+    
+    user_hash = compute_image_hash(image_base64)
+    
+    conn = get_db()
+    cur = conn.cursor()
+    
+    candidates = []
+    search_term = query_info.get('titolo') or query_info.get('nome') or ''
+    
+    if search_term:
+        search_pattern = f"%{search_term.lower()}%"
+        
+        cur.execute("""
+            SELECT id, titolo, editore, anno, image_hash, permalinkimmagine
+            FROM public.books 
+            WHERE (LOWER(titolo) LIKE %s OR LOWER(descrizione) LIKE %s)
+            AND image_hash IS NOT NULL
+            LIMIT %s
+        """, (search_pattern, search_pattern, limit))
+        candidates.extend(cur.fetchall())
+        
+        if query_info.get('nome'):
+            name_lower = query_info['nome'].lower()
+            parts = name_lower.split()
+            if len(parts) >= 2:
+                reversed_name = " ".join(reversed(parts))
+                pattern_original = f"%{name_lower}%"
+                pattern_reversed = f"%{reversed_name}%"
+            else:
+                pattern_original = f"%{name_lower}%"
+                pattern_reversed = pattern_original
+            
+            cur.execute("""
+                SELECT DISTINCT b.id, b.titolo, b.editore, b.anno, b.image_hash, b.permalinkimmagine
+                FROM public.books b
+                JOIN public.book_artists ba ON b.id = ba.book_id
+                WHERE (LOWER(ba.artist) LIKE %s OR LOWER(ba.artist) LIKE %s)
+                AND b.image_hash IS NOT NULL
+                LIMIT %s
+            """, (pattern_original, pattern_reversed, limit))
+            candidates.extend(cur.fetchall())
+    
+    cur.close()
+    conn.close()
+    
+    seen_ids = set()
+    unique_candidates = []
+    for c in candidates:
+        if c[0] not in seen_ids:
+            seen_ids.add(c[0])
+            unique_candidates.append(c)
+    
+    results = []
+    best_match = None
+    
+    for candidate in unique_candidates:
+        book_id, titolo, editore, anno, db_hash, immagine = candidate
+        
+        distance = compare_hashes(user_hash, db_hash) if user_hash else 999
+        
+        result = {
+            'id': book_id,
+            'titolo': titolo,
+            'editore': editore,
+            'anno': anno,
+            'immagine': immagine,
+            'hash_distance': distance,
+            'text_match': True,
+            'image_match': distance <= 25,
+            'confidence': 'alta' if distance <= 15 else ('media' if distance <= 25 else 'bassa')
+        }
+        results.append(result)
+        
+        if distance <= 25 and (best_match is None or distance < best_match['hash_distance']):
+            best_match = result
+    
+    results.sort(key=lambda x: (not x['image_match'], x['hash_distance']))
+    
+    return {
+        'candidati': results[:limit],
+        'best_match': best_match,
+        'user_hash': user_hash,
+        'search_term': search_term,
+        'total_candidates': len(unique_candidates)
+    }
+
+def generate_response_for_image_search(search_result: dict, query_info: dict) -> str:
+    """Genera risposta per ricerca con immagine."""
+    
+    best_match = search_result.get('best_match')
+    candidates = search_result.get('candidati', [])
+    search_term = search_result.get('search_term', '')
+    
+    if best_match and best_match.get('confidence') in ['alta', 'media']:
+        confidence_text = "con alta probabilità" if best_match['confidence'] == 'alta' else "probabilmente"
+        response = f"""Ho identificato {confidence_text} il libro dalla copertina:
+
+<a href="https://test01-frontend.vercel.app/books/{best_match['id']}" target="_blank"><strong>{best_match['titolo']}</strong></a>
+{f"({best_match['editore']}, {best_match['anno']})" if best_match.get('editore') else ''}"""
+        
+        if len(candidates) > 1:
+            other_matches = [c for c in candidates[:5] if c['id'] != best_match['id'] and c.get('image_match')]
+            if other_matches:
+                response += "\n\nAltri possibili match:"
+                for m in other_matches[:3]:
+                    response += f"\n• <a href=\"https://test01-frontend.vercel.app/books/{m['id']}\" target=\"_blank\">{m['titolo']}</a>"
+        
+        return response
+    
+    elif candidates:
+        response = f"""Dalla copertina ho letto: "{search_term}"
+
+Ho trovato {len(candidates)} possibili corrispondenze:"""
+        for c in candidates[:5]:
+            conf_icon = "✓" if c.get('image_match') else "?"
+            response += f"\n{conf_icon} <a href=\"https://test01-frontend.vercel.app/books/{c['id']}\" target=\"_blank\">{c['titolo']}</a>"
+        
+        return response
+    
+    else:
+        return f"""Non sono riuscito a identificare il libro dalla copertina.
+        
+Ho letto: "{search_term}"
+
+Prova a scattare una foto più nitida o scrivi il titolo/autore."""
 
 # ============ AUTOCOMPLETE / SUGGEST (NEW) ============
 
@@ -276,15 +436,16 @@ mantieni il nome della ricerca precedente e aggiungi/modifica i filtri.
     # Se c'è un'immagine, aggiungila prima
     if image_base64:
         # Rimuovi eventuale prefisso data:image/...;base64,
-        if ',' in image_base64:
-            image_base64 = image_base64.split(',')[1]
+        clean_base64 = image_base64
+        if ',' in clean_base64:
+            clean_base64 = clean_base64.split(',')[1]
         
         content.append({
             "type": "image",
             "source": {
                 "type": "base64",
                 "media_type": "image/jpeg",
-                "data": image_base64
+                "data": clean_base64
             }
         })
         
@@ -297,7 +458,7 @@ Esamina attentamente l'immagine ed estrai:
 - Editore (spesso in basso o sul dorso)
 - Qualsiasi altro testo visibile utile
 
-{f'Nota aggiuntiva dall\'utente: "{query}"' if query and query.strip() else ''}
+{f'Nota aggiuntiva dall utente: "{query}"' if query and query.strip() else ''}
 {context_info}
 
 Rispondi SOLO con un oggetto JSON valido:
@@ -344,10 +505,7 @@ JSON:"""
     response = claude.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=300,
-        messages=[{
-            "role": "user",
-            "content": content
-        }]
+        messages=[{"role": "user", "content": content}]
     )
     
     try:
@@ -993,9 +1151,9 @@ class handler(BaseHTTPRequestHandler):
             search_type = data.get('searchType', None)
             direct_filters = data.get('filters', None)
             mode = data.get('mode', None)
-            image_base64 = data.get('image', None)  # NEW: supporto immagine
+            image_base64 = data.get('image', None)  # NUOVO: supporto immagine
             
-            # Se c'è un'immagine ma nessuna query, imposta query vuota (non errore)
+            # Se c'è un'immagine ma nessuna query, è ok (ricerca solo per immagine)
             if not query and not image_base64:
                 self.wfile.write(json.dumps({"error": "Query richiesta"}).encode())
                 return
@@ -1099,9 +1257,37 @@ class handler(BaseHTTPRequestHandler):
                 }, default=str).encode())
                 return
             
-            # AI-powered search (existing) - ORA CON SUPPORTO IMMAGINE
+            # AI-powered search (con supporto immagine ibrido)
             context = data.get('context', {})
-            query_info = extract_name_from_query(query, context, image_base64)  # MODIFICATO: passa immagine
+            query_info = extract_name_from_query(query, context, image_base64)
+            
+            # Se c'è un'immagine, usa la ricerca ibrida
+            if image_base64:
+                image_search_result = search_by_image_hybrid(query_info, image_base64, limit)
+                
+                risposta = generate_response_for_image_search(image_search_result, query_info)
+                
+                risultati = []
+                for c in image_search_result['candidati'][:20]:
+                    risultati.append({
+                        'id': c['id'],
+                        'titolo': c['titolo'],
+                        'editore': c.get('editore', ''),
+                        'anno': c.get('anno', ''),
+                        'immagine': c.get('immagine', ''),
+                        'confidence': c.get('confidence', 'bassa'),
+                        'image_match': c.get('image_match', False)
+                    })
+                
+                self.wfile.write(json.dumps({
+                    "tipo_ricerca": "immagine",
+                    "risposta": risposta,
+                    "risultati": risultati,
+                    "best_match": image_search_result.get('best_match'),
+                    "search_term": image_search_result.get('search_term'),
+                    "total_candidates": image_search_result.get('total_candidates', 0)
+                }, default=str).encode())
+                return
             
             if query_info.get('tipo') == 'titolo':
                 title = query_info['titolo']
