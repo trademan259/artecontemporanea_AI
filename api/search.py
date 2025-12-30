@@ -1076,7 +1076,7 @@ class handler(BaseHTTPRequestHandler):
         if not query:
             self.wfile.write(json.dumps({
                 "status": "ok",
-                "message": "Libro Search API v3. Usa ?q=query per cercare."
+                "message": "Libro Search API v5 - Image Hash. Usa ?q=query per cercare."
             }).encode())
             return
         
